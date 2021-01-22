@@ -69,7 +69,9 @@ namespace Movement
 
             MoveSplineFlag  splineflags;
 
-            int32           time_passed;
+            float           speed;
+
+            uint32          time_passed;
             int32           point_Idx;
             int32           point_Idx_offset;
 
@@ -79,17 +81,18 @@ namespace Movement
             const MySpline::ControlArray& getPath() const { return spline.getPoints();}
             void computeFallElevation(float& el) const;
 
-            UpdateResult _updateState(int32& ms_time_diff);
-            int32 next_timestamp() const { return spline.length(point_Idx + 1);}
-            int32 segment_time_elapsed() const { return next_timestamp() - time_passed;}
-            int32 timeElapsed() const { return Duration() - time_passed;}
-            int32 timePassed() const { return time_passed;}
+            UpdateResult _updateState(uint32& ms_time_diff);
+            uint32 next_timestamp() const { return spline.length(point_Idx + 1);}
+            uint32 segment_time_elapsed() const { return next_timestamp() - time_passed;}
+            uint32 timeElapsed() const { return Duration() - time_passed;}
+            uint32 timePassed() const { return time_passed;}
 
         public:
             const MySpline& _Spline() const { return spline;}
             int32 _currentSplineIdx() const { return point_Idx;}
             void _Finalize();
             void _Interrupt() { splineflags.done = true;}
+            float GetElapsedValue() const { return float(time_passed) / Duration(); }
 
         public:
 
@@ -99,7 +102,7 @@ namespace Movement
             explicit MoveSpline();
 
             template<class UpdateHandler>
-            void updateState(int32 difftime, UpdateHandler& handler)
+            void updateState(uint32 difftime, UpdateHandler& handler)
             {
                 MANGOS_ASSERT(Initialized());
                 do
@@ -107,7 +110,7 @@ namespace Movement
                 while (difftime > 0);
             }
 
-            void updateState(int32 difftime)
+            void updateState(uint32 difftime)
             {
                 MANGOS_ASSERT(Initialized());
                 do _updateState(difftime);
@@ -118,12 +121,17 @@ namespace Movement
 
             uint32 GetId() const { return m_Id;}
             bool Finalized() const { return splineflags.done; }
-            bool isCyclic() const { return splineflags.cyclic;}
-            const Vector3 FinalDestination() const { return Initialized() ? spline.getPoint(spline.last()) : Vector3();}
+            bool isCyclic() const { return splineflags.cyclic; }
+            FacingInfo const& GetFacing() const { return facing; }
+            bool isFacing() const { return splineflags.isFacing(); }
+            bool isFacingTarget() const { return splineflags.final_target; }
+            const Vector3 FinalDestination() const;
             const Vector3 CurrentDestination() const { return Initialized() ? spline.getPoint(point_Idx + 1) : Vector3();}
             int32 currentPathIdx() const;
 
-            int32 Duration() const { return spline.length();}
+            uint32 Duration() const { return spline.length();}
+
+            float Speed() const { return speed; }
 
             std::string ToString() const;
     };

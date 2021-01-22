@@ -21,7 +21,7 @@ SDComment: The Stadium event is missing some yells. Seal of Ascension related ev
 SDCategory: Blackrock Spire
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "blackrock_spire.h"
 
 enum
@@ -94,9 +94,11 @@ static const DialogueEntry aStadiumDialogue[] =
     {0, 0, 0},
 };
 
-static const float rookeryEventSpawnPos[3] = {43.7685f, -259.82f, 91.6483f};
+static const float rookeryEventSpawnPos[3] = {51.11098f, -266.0549f, 92.87846f};
 
 instance_blackrock_spire::instance_blackrock_spire(Map* pMap) : ScriptedInstance(pMap), DialogueHelper(aStadiumDialogue),
+    m_bBeastIntroDone(false),
+    m_bBeastOutOfLair(false),
     m_bUpperDoorOpened(false),
     m_uiDragonspineDoorTimer(0),
     m_uiDragonspineGoCount(0),
@@ -104,9 +106,7 @@ instance_blackrock_spire::instance_blackrock_spire(Map* pMap) : ScriptedInstance
     m_uiFlamewreathWaveCount(0),
     m_uiStadiumEventTimer(0),
     m_uiStadiumWaves(0),
-    m_uiStadiumMobsAlive(0),
-    m_bBeastIntroDone(false),
-    m_bBeastOutOfLair(false)
+    m_uiStadiumMobsAlive(0)
 {
     Initialize();
 }
@@ -218,7 +218,7 @@ void instance_blackrock_spire::SetData(uint32 uiType, uint32 uiData)
                 {
                     if (Creature* pIncarcerator = instance->GetCreature(*itr))
                     {
-                        if (!pIncarcerator->isAlive())
+                        if (!pIncarcerator->IsAlive())
                             pIncarcerator->Respawn();
                         pIncarcerator->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
                         pIncarcerator->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
@@ -317,10 +317,10 @@ void instance_blackrock_spire::Load(const char* chrIn)
     std::istringstream loadStream(chrIn);
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3] >> m_auiEncounter[4] >> m_auiEncounter[5];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -346,7 +346,7 @@ void instance_blackrock_spire::DoSortRoomEventMobs()
             for (GuidList::const_iterator itr = m_lRoomEventMobGUIDList.begin(); itr != m_lRoomEventMobGUIDList.end(); ++itr)
             {
                 Creature* pCreature = instance->GetCreature(*itr);
-                if (pCreature && pCreature->isAlive() && pCreature->GetDistance(pRune) < 10.0f)
+                if (pCreature && pCreature->IsAlive() && pCreature->GetDistance(pRune) < 10.0f)
                     m_alRoomEventMobGUIDSorted[i].push_back(*itr);
             }
         }
@@ -529,7 +529,7 @@ void instance_blackrock_spire::DoProcessEmberseerEvent()
     {
         if (Creature* pCreature = instance->GetCreature(*itr))
         {
-            if (pCreature->isAlive())
+            if (pCreature->IsAlive())
             {
                 pCreature->InterruptNonMeleeSpells(false);
                 pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
@@ -577,6 +577,7 @@ void instance_blackrock_spire::JustDidDialogueStep(int32 iEntry)
                         pSpectator->SetFacingTo(aSpectatorsTargetLocs[i].m_fO);
                         pSpectator->SetWalk(false);
                         pSpectator->GetMotionMaster()->MovePoint(0, aSpectatorsTargetLocs[i].m_fX, aSpectatorsTargetLocs[i].m_fY, aSpectatorsTargetLocs[i].m_fZ);
+                        pSpectator->AI()->SetReactState(REACT_DEFENSIVE);
                         m_lStadiumSpectatorsGUIDList.push_back(pSpectator->GetObjectGuid());
                     }
                 }
@@ -688,8 +689,8 @@ void instance_blackrock_spire::DoSendNextFlamewreathWave()
             pSummoned = pSummoner->SummonCreature(urand(0, 1) && m_uiFlamewreathWaveCount ? NPC_ROOKERY_GUARDIAN : NPC_ROOKERY_HATCHER, fX, fY, fZ, 0.0, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 300000);
             if (pSummoned)
             {
-                pSummoner->GetContactPoint(pSummoned, fX, fY, fZ);
-                pSummoned->GetMotionMaster()->MovePoint(1, fX, fY, pSummoner->GetPositionZ());
+                //pSummoner->GetContactPoint(pSummoned, fX, fY, fZ);
+                //pSummoned->GetMotionMaster()->MovePoint(1, fX, fY, pSummoner->GetPositionZ());
             }
         }
         if (pSummoned && m_uiFlamewreathWaveCount == 0)
@@ -707,7 +708,7 @@ void instance_blackrock_spire::DoSendNextFlamewreathWave()
     else                                                    // Send Flamewreath
     {
         if (Creature* pSolakar = pSummoner->SummonCreature(NPC_SOLAKAR_FLAMEWREATH, rookeryEventSpawnPos[0], rookeryEventSpawnPos[1], rookeryEventSpawnPos[2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, HOUR * IN_MILLISECONDS))
-            pSolakar->GetMotionMaster()->MovePoint(1, pSummoner->GetPositionX(), pSummoner->GetPositionY(), pSummoner->GetPositionZ());
+            //pSolakar->GetMotionMaster()->MovePoint(1, pSummoner->GetPositionX(), pSummoner->GetPositionY(), pSummoner->GetPositionZ());
         SetData(TYPE_FLAMEWREATH, SPECIAL);
         m_uiFlamewreathEventTimer = 0;
     }
@@ -790,7 +791,7 @@ InstanceData* GetInstanceData_instance_blackrock_spire(Map* pMap)
 
 bool AreaTrigger_at_blackrock_spire(Player* pPlayer, AreaTriggerEntry const* pAt)
 {
-    if (!pPlayer->isAlive() || pPlayer->isGameMaster())
+    if (!pPlayer->IsAlive() || pPlayer->IsGameMaster())
         return false;
 
     switch (pAt->id)
@@ -939,7 +940,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
     // Function to search for new rookery egg in range
     void DoFindNewEgg()
     {
-        std::list<GameObject*> lEggsInRange;
+        GameObjectList lEggsInRange;
         GetGameObjectListWithEntryInGrid(lEggsInRange, m_creature, GO_ROOKERY_EGG, 20.0f);
 
         if (lEggsInRange.empty())   // No GO found
@@ -949,7 +950,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
         GameObject* pNearestEgg = nullptr;
 
         // Always need to find new ones
-        for (std::list<GameObject*>::const_iterator itr = lEggsInRange.begin(); itr != lEggsInRange.end(); ++itr)
+        for (GameObjectList::const_iterator itr = lEggsInRange.begin(); itr != lEggsInRange.end(); ++itr)
         {
             if (!((*itr)->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE)))
             {
@@ -971,7 +972,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
     void UpdateAI(const uint32 uiDiff) override
     {
         // Return since we have no target or are disturbing an egg
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim() || m_bIsMovementActive)
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim() || m_bIsMovementActive)
             return;
 
         if (uiWaitTimer)
@@ -979,7 +980,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
             if (uiWaitTimer < uiDiff)
             {
                 uiWaitTimer = 0;
-                m_creature->GetMotionMaster()->MoveChase(m_creature->getVictim());
+                m_creature->GetMotionMaster()->MoveChase(m_creature->GetVictim());
             }
             else
                 uiWaitTimer -= uiDiff;
@@ -988,7 +989,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
         //  Strike Timer
         if (uiStrikeTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_STRIKE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_STRIKE) == CAST_OK)
                 uiStrikeTimer = urand(4000, 6000);
         }
         else
@@ -997,7 +998,7 @@ struct npc_rookery_hatcherAI : public ScriptedAI
         // Sunder Armor timer
         if (uiSunderArmorTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SUNDER_ARMOR) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SUNDER_ARMOR) == CAST_OK)
                 uiSunderArmorTimer = 5000;
         }
         else
@@ -1016,16 +1017,14 @@ struct npc_rookery_hatcherAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_rookery_hatcher(Creature* pCreature)
+UnitAI* GetAI_npc_rookery_hatcher(Creature* pCreature)
 {
     return new npc_rookery_hatcherAI(pCreature);
 }
 
 void AddSC_instance_blackrock_spire()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_blackrock_spire";
     pNewScript->GetInstanceData = &GetInstanceData_instance_blackrock_spire;
     pNewScript->RegisterSelf();

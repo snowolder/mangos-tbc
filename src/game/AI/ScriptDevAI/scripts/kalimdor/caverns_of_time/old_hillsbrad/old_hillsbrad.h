@@ -5,6 +5,8 @@
 #ifndef DEF_OLD_HILLSBRAD_H
 #define DEF_OLD_HILLSBRAD_H
 
+#include "World/WorldStateDefines.h"
+
 enum
 {
     MAX_ENCOUNTER                   = 7,
@@ -48,8 +50,6 @@ enum
     QUEST_ENTRY_DIVERSION           = 10283,
     QUEST_ENTRY_ESCAPE              = 10284,
     QUEST_ENTRY_RETURN              = 10285,
-
-    WORLD_STATE_OH                  = 2436,
 };
 
 static const float afInstanceLoc[][4] =
@@ -58,7 +58,7 @@ static const float afInstanceLoc[][4] =
     {2192.58f, 238.44f, 52.44f, 0},                 // left orcs outside loc
 };
 
-static const float aDrakeSummonLoc[4] = {2150.68f, 126.91f, 77.71f, 4.19f};
+static const float aDrakeSummonLoc[4] = {2170.7588f, 146.05963f, 87.63939f, 4.19093f};
 
 class instance_old_hillsbrad : public ScriptedInstance
 {
@@ -79,12 +79,12 @@ class instance_old_hillsbrad : public ScriptedInstance
         void SetData(uint32 uiType, uint32 uiData) override;
         uint32 GetData(uint32 uiType) const override;
 
-        uint32 GetThrallEventCount() { return m_uiThrallEventCount; }
+        uint32 GetThrallEventCount() const { return m_uiThrallEventCount; }
 
         const char* Save() const override { return m_strInstData.c_str(); }
         void Load(const char* chrIn) override;
 
-        void Update(uint32 uiDiff) override;
+        void Update(const uint32 diff) override;
 
     protected:
         void HandleThrallRelocation();

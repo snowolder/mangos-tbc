@@ -32,6 +32,7 @@
 
 #include <chrono>
 #include <functional>
+#include <deque>
 
 class WorldPacket;
 class WorldSession;
@@ -106,7 +107,6 @@ class WorldSocket : public MaNGOS::Socket
 
         /// Session to which received packets are routed
         WorldSession* m_session;
-        bool m_sessionFinalized;
 
         const uint32 m_seed;
 
@@ -121,6 +121,9 @@ class WorldSocket : public MaNGOS::Socket
         /// Called by ProcessIncoming() on CMSG_PING.
         bool HandlePing(WorldPacket& recvPacket);
 
+        std::deque<uint32> m_opcodeHistory;
+        std::mutex m_worldSocketMutex;
+
     public:
         WorldSocket(boost::asio::io_service& service, std::function<void (Socket*)> closeHandler);
 
@@ -134,6 +137,10 @@ class WorldSocket : public MaNGOS::Socket
         /// Return the session key
         BigNumber& GetSessionKey() { return m_s; }
 
+        std::deque<uint32> GetOpcodeHistory();
+
+        static std::vector<uint32> m_packetCooldowns;
+        std::map<uint32, TimePoint> m_lastPacket;
 };
 
 #endif  /* _WORLDSOCKET_H */

@@ -26,7 +26,7 @@ npc_deathstalker_erland
 npc_deathstalker_faerleia
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*#####
@@ -67,31 +67,31 @@ struct npc_deathstalker_erlandAI : public npc_escortAI
 
         switch (i)
         {
-            case 0:
+            case 1:
                 DoScriptText(SAY_START_2, m_creature, pPlayer);
                 break;
-            case 13:
-                DoScriptText(SAY_END, m_creature, pPlayer);
-                pPlayer->GroupEventHappens(QUEST_ERLAND, m_creature);
-                break;
             case 14:
+                DoScriptText(SAY_END, m_creature, pPlayer);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ERLAND, m_creature);
+                break;
+            case 15:
                 if (Creature* pRane = GetClosestCreatureWithEntry(m_creature, NPC_RANE, 45.0f))
                     DoScriptText(SAY_RANE, pRane, m_creature);
                 break;
-            case 15:
+            case 16:
                 DoScriptText(SAY_RANE_REPLY, m_creature);
                 break;
-            case 16:
+            case 17:
                 DoScriptText(SAY_CHECK_NEXT, m_creature);
                 break;
-            case 24:
+            case 25:
                 DoScriptText(SAY_QUINN, m_creature);
                 break;
-            case 25:
+            case 26:
                 if (Creature* pQuinn = GetClosestCreatureWithEntry(m_creature, NPC_QUINN, 45.0f))
                     DoScriptText(SAY_QUINN_REPLY, pQuinn, m_creature);
                 break;
-            case 26:
+            case 27:
                 DoScriptText(SAY_BYE, m_creature);
                 break;
         }
@@ -122,7 +122,7 @@ bool QuestAccept_npc_deathstalker_erland(Player* pPlayer, Creature* pCreature, c
     return true;
 }
 
-CreatureAI* GetAI_npc_deathstalker_erland(Creature* pCreature)
+UnitAI* GetAI_npc_deathstalker_erland(Creature* pCreature)
 {
     return new npc_deathstalker_erlandAI(pCreature);
 }
@@ -235,7 +235,7 @@ struct npc_deathstalker_faerleiaAI : public ScriptedAI
                 DoScriptText(SAY_COMPLETED, m_creature);
 
                 if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid))
-                    pPlayer->GroupEventHappens(QUEST_PYREWOOD_AMBUSH, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_PYREWOOD_AMBUSH, m_creature);
 
                 FinishEvent();
             }
@@ -278,7 +278,7 @@ struct npc_deathstalker_faerleiaAI : public ScriptedAI
                 m_uiWaveTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         DoMeleeAttackIfReady();
@@ -292,21 +292,22 @@ bool QuestAccept_npc_deathstalker_faerleia(Player* pPlayer, Creature* pCreature,
         DoScriptText(SAY_START, pCreature, pPlayer);
 
         if (npc_deathstalker_faerleiaAI* pFaerleiaAI = dynamic_cast<npc_deathstalker_faerleiaAI*>(pCreature->AI()))
+        {
             pFaerleiaAI->StartEvent(pPlayer);
+            pCreature->SetFactionTemporary(FACTION_ESCORT_H_NEUTRAL_ACTIVE, TEMPFACTION_RESTORE_RESPAWN); // faction guessed
+        }
     }
     return true;
 }
 
-CreatureAI* GetAI_npc_deathstalker_faerleia(Creature* pCreature)
+UnitAI* GetAI_npc_deathstalker_faerleia(Creature* pCreature)
 {
     return new npc_deathstalker_faerleiaAI(pCreature);
 }
 
 void AddSC_silverpine_forest()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_deathstalker_erland";
     pNewScript->GetAI = &GetAI_npc_deathstalker_erland;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_deathstalker_erland;

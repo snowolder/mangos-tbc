@@ -31,12 +31,15 @@
 #include "Server/WorldSession.h"
 #include "Log.h"
 #include "Server/DBCStores.h"
+#include "CommonDefines.h"
 
 #include <chrono>
 #include <functional>
 #include <memory>
+#include "World/WorldState.h"
 
 #include <boost/asio.hpp>
+#include <utility>
 
 #if defined( __GNUC__ )
 #pragma pack(1)
@@ -54,10 +57,28 @@ struct ServerPktHeader
 #pragma pack(pop)
 #endif
 
-WorldSocket::WorldSocket(boost::asio::io_service& service, std::function<void (Socket*)> closeHandler)
-    : Socket(service, closeHandler), m_lastPingTime(std::chrono::system_clock::time_point::min()), m_overSpeedPings(0),
-      m_useExistingHeader(false), m_session(nullptr), m_seed(urand())
-{}
+std::vector<uint32> InitOpcodeCooldowns()
+{
+    std::vector<uint32> data(NUM_MSG_TYPES, 0);
+
+    data[CMSG_WHO] = 5000;
+    data[CMSG_WHOIS] = 5000;
+    data[CMSG_INSPECT] = 5000;
+
+    return data;
+}
+
+std::vector<uint32> WorldSocket::m_packetCooldowns = InitOpcodeCooldowns();
+
+std::deque<uint32> WorldSocket::GetOpcodeHistory()
+{
+    return m_opcodeHistory;
+}
+
+WorldSocket::WorldSocket(boost::asio::io_service& service, std::function<void (Socket*)> closeHandler) : Socket(service, std::move(closeHandler)), m_lastPingTime(std::chrono::system_clock::time_point::min()), m_overSpeedPings(0), m_existingHeader(),
+    m_useExistingHeader(false), m_session(nullptr), m_seed(urand())
+{
+}
 
 void WorldSocket::SendPacket(const WorldPacket& pct, bool immediate)
 {
@@ -66,6 +87,9 @@ void WorldSocket::SendPacket(const WorldPacket& pct, bool immediate)
 
     // Dump outgoing packet.
     sLog.outWorldPacketDump(GetRemoteEndpoint().c_str(), pct.GetOpcode(), pct.GetOpcodeName(), pct, false);
+
+    // encrypt thread unsafe due to being executed from map contexts frequently - TODO: move to post service context in future
+    std::lock_guard<std::mutex> guard(m_worldSocketMutex);
 
     ServerPktHeader header;
 
@@ -84,6 +108,10 @@ void WorldSocket::SendPacket(const WorldPacket& pct, bool immediate)
 
     if (immediate)
         ForceFlushOut();
+
+    m_opcodeHistory.push_front(uint32(pct.GetOpcode()));
+    if (m_opcodeHistory.size() > 50)
+        m_opcodeHistory.resize(20);
 }
 
 bool WorldSocket::Open()
@@ -127,6 +155,7 @@ bool WorldSocket::ProcessIncomingData()
             return false;
         }
 
+        // thread safe due to always being called from service context
         m_crypt.DecryptRecv((uint8*)&header, sizeof(ClientPktHeader));
 
         EndianConvertReverse(header.size);
@@ -176,6 +205,15 @@ bool WorldSocket::ProcessIncomingData()
 
     sLog.outWorldPacketDump(GetRemoteEndpoint().c_str(), pct->GetOpcode(), pct->GetOpcodeName(), *pct, true);
 
+    if (WorldSocket::m_packetCooldowns[opcode])
+    {
+        auto now = std::chrono::time_point_cast<std::chrono::milliseconds>(Clock::now());
+        if (now < m_lastPacket[opcode]) // packet on cooldown
+            return true;
+        else // start cooldown and allow execution
+            m_lastPacket[opcode] = now + std::chrono::milliseconds(WorldSocket::m_packetCooldowns[opcode]);
+    }
+
     try
     {
         switch (opcode)
@@ -193,10 +231,11 @@ bool WorldSocket::ProcessIncomingData()
                 return HandlePing(*pct);
 
             case CMSG_KEEP_ALIVE:
-                DEBUG_LOG("CMSG_KEEP_ALIVE ,size: " SIZEFMTD " ", pct->size());
-
+                DEBUG_LOG("CMSG_KEEP_ALIVE, size: " SIZEFMTD " ", pct->size());
                 return true;
 
+            case CMSG_TIME_SYNC_RESP:
+                pct->SetReceivedTime(std::chrono::steady_clock::now());
             default:
             {
                 if (!m_session)
@@ -237,9 +276,8 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
 {
     // NOTE: ATM the socket is singlethread, have this in mind ...
     uint8 digest[20];
-    uint32 clientSeed, id, security;
+    uint32 clientSeed;
     uint32 ClientBuild;
-    uint8 expansion;
     LocaleConstant locale;
     std::string account;
     Sha1Hash sha1;
@@ -277,17 +315,17 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
 
     QueryResult* result =
         LoginDatabase.PQuery("SELECT "
-                             "id, "                      //0
+                             "a.id, "                    //0
                              "gmlevel, "                 //1
                              "sessionkey, "              //2
-                             "last_ip, "                 //3
+                             "lockedIp, "                //3
                              "locked, "                  //4
                              "v, "                       //5
                              "s, "                       //6
                              "expansion, "               //7
                              "mutetime, "                //8
                              "locale "                   //9
-                             "FROM account "
+                             "FROM account a "
                              "WHERE username = '%s'",
                              safe_account.c_str());
 
@@ -304,8 +342,6 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     }
 
     Field* fields = result->Fetch();
-
-    expansion = ((sWorld.getConfig(CONFIG_UINT32_EXPANSION) > fields[7].GetUInt8()) ? fields[7].GetUInt8() : sWorld.getConfig(CONFIG_UINT32_EXPANSION));
 
     N.SetHexStr("894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7");
     g.SetDword(7);
@@ -339,28 +375,33 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
         }
     }
 
-    id = fields[0].GetUInt32();
-    security = fields[1].GetUInt16();
+    uint32 id = fields[0].GetUInt32();
+    uint32 security = fields[1].GetUInt16();
     if (security > SEC_ADMINISTRATOR)                       // prevent invalid security settings in DB
         security = SEC_ADMINISTRATOR;
+
+    uint8 maxServerExpansion = sWorld.getConfig(CONFIG_UINT32_EXPANSION);
+    uint8 currentServerExpansion = sWorldState.GetExpansion();
+    uint8 playerAddonLevel = fields[7].GetUInt8();
+    uint8 expansion;
+    if (security >= SEC_GAMEMASTER)
+        expansion = std::min(playerAddonLevel, maxServerExpansion);
+    else
+        expansion = std::min(playerAddonLevel, currentServerExpansion);
 
     K.SetHexStr(fields[2].GetString());
 
     time_t mutetime = time_t (fields[8].GetUInt64());
 
-    uint8 tempLoc = LocaleConstant(fields[9].GetUInt8());
-    if (tempLoc >= static_cast<uint8>(MAX_LOCALE))
-        locale = LOCALE_enUS;
-    else
-        locale = LocaleConstant(tempLoc);
+    locale = GetLocaleByName(fields[9].GetString());
 
     delete result;
 
     // Re-check account ban (same check as in realmd)
     QueryResult* banresult =
-        LoginDatabase.PQuery("SELECT 1 FROM account_banned WHERE id = %u AND active = 1 AND (unbandate > UNIX_TIMESTAMP() OR unbandate = bandate)"
+        LoginDatabase.PQuery("SELECT 1 FROM account_banned WHERE account_id = %u AND active = 1 AND (expires_at > UNIX_TIMESTAMP() OR expires_at = banned_at)"
                              "UNION "
-                             "SELECT 1 FROM ip_banned WHERE (unbandate = bandate OR unbandate > UNIX_TIMESTAMP()) AND ip = '%s'",
+                             "SELECT 1 FROM ip_banned WHERE (expires_at = banned_at OR expires_at > UNIX_TIMESTAMP()) AND ip = '%s'",
                              id, GetRemoteAddress().c_str());
 
     if (banresult) // if account banned
@@ -423,20 +464,47 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     // No SQL injection, username escaped.
     static SqlStatementID updAccount;
 
-    SqlStatement stmt = LoginDatabase.CreateStatement(updAccount, "UPDATE account SET last_ip = ? WHERE username = ?");
-    stmt.PExecute(address.c_str(), account.c_str());
-
-    m_session = new WorldSession(id, this, AccountTypes(security), expansion, mutetime, locale);
+    SqlStatement stmt = LoginDatabase.CreateStatement(updAccount, "INSERT INTO account_logons(accountId,ip,loginTime,loginSource) VALUES(?,?,NOW(),?)");
+    stmt.PExecute(id, address.c_str(), std::to_string(LOGIN_TYPE_MANGOSD).c_str());
 
     m_crypt.Init(&K);
-
-    m_session->LoadTutorialsData();
-
-    sWorld.AddSession(m_session);
 
     // Create and send the Addon packet
     if (sAddOnHandler.BuildAddonPacket(recvPacket, SendAddonPacked))
         SendPacket(SendAddonPacked);
+
+    m_session = sWorld.FindSession(id);
+    if (m_session)
+    {
+        // Session exist so player is reconnecting
+        // check if we can request a new socket
+        if (!m_session->RequestNewSocket(this))
+            return false;
+
+        uint32 counter = 0;
+
+        // wait session going to be ready
+        while (m_session->GetState() != WORLD_SESSION_STATE_CHAR_SELECTION)
+        {
+            ++counter;
+            // just wait
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+            if (IsClosed() || counter > 20)
+                return false;
+        }
+    }
+    else
+    {
+        // new session
+        if (!(m_session = new WorldSession(id, this, AccountTypes(security), expansion, mutetime, locale)))
+            return false;
+
+        m_session->LoadGlobalAccountData();
+        m_session->LoadTutorialsData();
+
+        sWorld.AddSession(m_session);
+    }
 
     return true;
 }
@@ -482,10 +550,7 @@ bool WorldSocket::HandlePing(WorldPacket& recvPacket)
     // critical section
     {
         if (m_session)
-        {
             m_session->SetLatency(latency);
-            m_session->ResetClientTimeDelay();
-        }
         else
         {
             sLog.outError("WorldSocket::HandlePing: peer sent CMSG_PING, "

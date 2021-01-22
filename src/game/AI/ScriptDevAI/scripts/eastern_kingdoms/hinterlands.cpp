@@ -26,8 +26,9 @@ npc_00x09hl
 npc_rinji
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
+#include "world_eastern_kingdoms.h"
 
 /*######
 ## npc_00x09hl
@@ -67,16 +68,16 @@ struct npc_00x09hlAI : public npc_escortAI
     {
         switch (uiPointId)
         {
-            case 26:
+            case 27:
                 DoScriptText(SAY_OOX_AMBUSH, m_creature);
                 break;
-            case 43:
+            case 44:
                 DoScriptText(SAY_OOX_AMBUSH, m_creature);
                 break;
-            case 64:
+            case 65:
                 DoScriptText(SAY_OOX_END, m_creature);
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_RESQUE_OOX_09, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_RESQUE_OOX_09, m_creature);
                 break;
         }
     }
@@ -85,7 +86,7 @@ struct npc_00x09hlAI : public npc_escortAI
     {
         switch (uiPointId)
         {
-            case 27:
+            case 28:
                 if (m_uiSummonCount >= 3)
                     break;
 
@@ -98,7 +99,7 @@ struct npc_00x09hlAI : public npc_escortAI
                     ++m_uiSummonCount;
                 }
                 break;
-            case 44:
+            case 45:
                 if (m_uiSummonCount >= 6)
                     break;
 
@@ -147,7 +148,7 @@ bool QuestAccept_npc_00x09hl(Player* pPlayer, Creature* pCreature, const Quest* 
         DoScriptText(SAY_OOX_START, pCreature, pPlayer);
         pCreature->SetActiveObjectState(true);
         pCreature->SetStandState(UNIT_STAND_STATE_STAND);
-        pCreature->SetFactionTemporary(FACTION_ESCORT_N_FRIEND_ACTIVE);
+        pCreature->SetFactionTemporary(FACTION_ESCORT_N_FRIEND_ACTIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_IMMUNE_TO_NPC);
 
         if (npc_00x09hlAI* pEscortAI = dynamic_cast<npc_00x09hlAI*>(pCreature->AI()))
             pEscortAI->Start(false, pPlayer, pQuest);
@@ -155,7 +156,7 @@ bool QuestAccept_npc_00x09hl(Player* pPlayer, Creature* pCreature, const Quest* 
     return true;
 }
 
-CreatureAI* GetAI_npc_00x09hl(Creature* pCreature)
+UnitAI* GetAI_npc_00x09hl(Creature* pCreature)
 {
     return new npc_00x09hlAI(pCreature);
 }
@@ -275,18 +276,18 @@ struct npc_rinjiAI : public npc_escortAI
 
         switch (uiPointId)
         {
-            case 1:
+            case 2:
                 DoScriptText(SAY_RIN_FREE, m_creature, pPlayer);
                 break;
-            case 7:
+            case 8:
                 DoSpawnAmbush(true);
                 break;
-            case 13:
+            case 14:
                 DoSpawnAmbush(false);
                 break;
-            case 17:
+            case 18:
                 DoScriptText(SAY_RIN_COMPLETE, m_creature, pPlayer);
-                pPlayer->GroupEventHappens(QUEST_RINJI_TRAPPED, m_creature);
+                pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_RINJI_TRAPPED, m_creature);
                 SetRun();
                 m_uiPostEventCount = 1;
                 break;
@@ -296,7 +297,7 @@ struct npc_rinjiAI : public npc_escortAI
     void UpdateEscortAI(const uint32 uiDiff) override
     {
         // Check if we have a current target
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
         {
             if (HasEscortState(STATE_ESCORT_ESCORTING) && m_uiPostEventCount)
             {
@@ -344,20 +345,38 @@ bool QuestAccept_npc_rinji(Player* pPlayer, Creature* pCreature, const Quest* pQ
 
         if (npc_rinjiAI* pEscortAI = dynamic_cast<npc_rinjiAI*>(pCreature->AI()))
             pEscortAI->Start(false, pPlayer, pQuest);
+
+        pCreature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
     }
     return true;
 }
 
-CreatureAI* GetAI_npc_rinji(Creature* pCreature)
+UnitAI* GetAI_npc_rinji(Creature* pCreature)
 {
     return new npc_rinjiAI(pCreature);
 }
 
+enum
+{
+    YELL_FALSTAD_INVADERS = -27,
+};
+
+bool ProcessEventId_WildhammerMessage(uint32 /*eventId*/, Object* source, Object* /*target*/, bool /*isStart*/)
+{
+    if (!source->IsPlayer())
+        return true;
+
+    Player* player = static_cast<Player*>(source);
+    player->UpdatePvP(true);
+    player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ENTER_PVP_COMBAT);
+    if (Creature* falstad = static_cast<ScriptedInstance*>(player->GetInstanceData())->GetSingleCreatureFromStorage(NPC_FALSTAD_WILDHAMMER))
+        DoScriptText(YELL_FALSTAD_INVADERS, falstad, player);
+    return true;
+}
+
 void AddSC_hinterlands()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "npc_00x09hl";
     pNewScript->GetAI = &GetAI_npc_00x09hl;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_00x09hl;
@@ -367,5 +386,10 @@ void AddSC_hinterlands()
     pNewScript->Name = "npc_rinji";
     pNewScript->GetAI = &GetAI_npc_rinji;
     pNewScript->pQuestAcceptNPC = &QuestAccept_npc_rinji;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "event_wildhammer_message";
+    pNewScript->pProcessEventId = &ProcessEventId_WildhammerMessage;
     pNewScript->RegisterSelf();
 }

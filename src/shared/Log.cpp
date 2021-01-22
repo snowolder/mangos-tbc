@@ -29,6 +29,8 @@
 #include <thread>
 #include <cstdarg>
 
+#include <boost/stacktrace.hpp>
+
 INSTANTIATE_SINGLETON_1(Log);
 
 LogFilterData logFilterData[LOG_FILTER_COUNT] =
@@ -47,11 +49,12 @@ LogFilterData logFilterData[LOG_FILTER_COUNT] =
     { "combat",              "LogFilter_Combat",             false },
     { "spell_cast",          "LogFilter_SpellCast",          false },
     { "db_stricted_check",   "LogFilter_DbStrictedCheck",    true  },
-    { "ahbot_seller",        "LogFilter_AhbotSeller",        true  },
-    { "ahbot_buyer",         "LogFilter_AhbotBuyer",         true  },
+    { "",                    "",                             true  },
+    { "",                    "",                             true  },
     { "pathfinding",         "LogFilter_Pathfinding",        true  },
     { "map_loading",         "LogFilter_MapLoading",         true  },
     { "event_ai_dev",        "LogFilter_EventAiDev",         true  },
+    { "db_scripts_dev",      "LogFilter_DbScriptDev",        true  },
 };
 
 enum LogType
@@ -65,8 +68,8 @@ enum LogType
 const int LogType_count = int(LogError) + 1;
 
 Log::Log() :
-    raLogfile(nullptr), logfile(nullptr), gmLogfile(nullptr), charLogfile(nullptr), customLogFile(nullptr),
-    dberLogfile(nullptr), eventAiErLogfile(nullptr), scriptErrLogFile(nullptr), worldLogfile(nullptr), m_colored(false), m_includeTime(false), m_gmlog_per_account(false), m_scriptLibName(nullptr)
+    raLogfile(nullptr), logfile(nullptr), gmLogfile(nullptr), charLogfile(nullptr), dberLogfile(nullptr),
+    eventAiErLogfile(nullptr), scriptErrLogFile(nullptr), worldLogfile(nullptr), customLogFile(nullptr), m_colored(false), m_includeTime(false), m_gmlog_per_account(false), m_scriptLibName(nullptr)
 {
     Initialize();
 }
@@ -83,14 +86,14 @@ void Log::InitColors(const std::string& str)
 
     std::istringstream ss(str);
 
-    for (int i = 0; i < LogType_count; ++i)
+    for (int& i : color)
     {
-        ss >> color[i];
+        ss >> i;
 
         if (!ss)
             return;
 
-        if (color[i] < 0 || color[i] >= Color_count)
+        if (i < 0 || i >= Color_count)
             return;
     }
 
@@ -241,7 +244,7 @@ void Log::Initialize()
             bool m_gmlog_timestamp = sConfig.GetBoolDefault("GmLogTimestamp", false);
 
             size_t dot_pos = m_gmlog_filename_format.find_last_of('.');
-            if (dot_pos != m_gmlog_filename_format.npos)
+            if (dot_pos != std::string::npos)
             {
                 if (m_gmlog_timestamp)
                     m_gmlog_filename_format.insert(dot_pos, m_logsTimestamp);
@@ -292,7 +295,7 @@ FILE* Log::openLogFile(char const* configFileName, char const* configTimeStampFl
     if (configTimeStampFlag && sConfig.GetBoolDefault(configTimeStampFlag, false))
     {
         size_t dot_pos = logfn.find_last_of('.');
-        if (dot_pos != logfn.npos)
+        if (dot_pos != std::string::npos)
             logfn.insert(dot_pos, m_logsTimestamp);
         else
             logfn += m_logsTimestamp;
@@ -1098,4 +1101,25 @@ void script_error_log(const char* str, ...)
     va_end(ap);
 
     sLog.outErrorScriptLib("%s", buf);
+}
+
+void Log::traceLog()
+{
+    std::lock_guard<std::mutex> guard(m_worldLogMtx);
+    if (customLogFile)
+    {
+        fprintf(customLogFile, "%s\n", GetTraceLog().data());
+        fflush(customLogFile);
+    }
+
+    fflush(stdout);
+}
+
+// has to be in a locked enviroment on linux
+std::string Log::GetTraceLog()
+{
+    std::lock_guard<std::mutex> guard(m_traceLogMtx);
+    std::stringstream ss;
+    ss << boost::stacktrace::stacktrace(); // warning - not async-safe - hence the locking
+    return ss.str();
 }

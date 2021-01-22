@@ -16,12 +16,13 @@
 
 /* ScriptData
 SDName: Boss_Watchkeeper_Gargolmar
-SD%Complete: 90
-SDComment: Missing adds to heal him.
+SD%Complete: 95
+SDComment: Research Overpower Usage
 SDCategory: Hellfire Citadel, Hellfire Ramparts
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
+#include "AI/ScriptDevAI/base/CombatAI.h"
 
 enum
 {
@@ -40,35 +41,60 @@ enum
     SPELL_SURGE                 = 34645,
     SPELL_RETALIATION           = 22857,
     SPELL_OVERPOWER             = 32154,
+
+    NPC_HELLFIRE_WATCHER = 17309,
 };
 
-struct boss_watchkeeper_gargolmarAI : public ScriptedAI
+enum GargolmarActions // order based on priority
 {
-    boss_watchkeeper_gargolmarAI(Creature* pCreature) : ScriptedAI(pCreature)
+    GARGOLMAR_ACTION_YELL_FOR_HEAL,
+    GARGOLMAR_ACTION_MORTAL_WOUND,
+    GARGOLMAR_ACTION_SURGE,
+    GARGOLMAR_ACTION_RETALIATION,
+    GARGOLMAR_ACTION_OVERPOWER,
+    GARGOLMAR_ACTION_MAX
+};
+
+struct boss_watchkeeper_gargolmarAI : public CombatAI
+{
+    boss_watchkeeper_gargolmarAI(Creature* creature) : CombatAI(creature, GARGOLMAR_ACTION_MAX), m_instance(static_cast<ScriptedInstance*>(creature->GetInstanceData())),
+        m_isRegularMode(creature->GetMap()->IsRegularDifficulty()), m_HasTaunted(false)
     {
-        m_bIsRegularMode = pCreature->GetMap()->IsRegularDifficulty();
-        Reset();
+        AddTimerlessCombatAction(GARGOLMAR_ACTION_YELL_FOR_HEAL, true);
+        AddCombatAction(GARGOLMAR_ACTION_MORTAL_WOUND, 0u);
+        AddCombatAction(GARGOLMAR_ACTION_SURGE, 4800u);
+        AddCombatAction(GARGOLMAR_ACTION_RETALIATION, 0u);
+        AddCombatAction(GARGOLMAR_ACTION_OVERPOWER, 3600u, 14800u);
     }
 
-    bool m_bIsRegularMode;
+    ScriptedInstance* m_instance;
+    bool m_isRegularMode;
+    bool m_HasTaunted;
 
-    uint32 m_uiSurgeTimer;
-    uint32 m_uiMortalWoundTimer;
-    uint32 m_uiRetaliationTimer;
-    uint32 m_uiOverpowerTimer;
-
-    bool m_bHasTaunted;
-    bool m_bYelledForHeal;
-
-    void Reset() override
+    uint32 GetSubsequentActionTimer(GargolmarActions id)
     {
-        m_uiSurgeTimer = urand(2400, 6100);
-        m_uiMortalWoundTimer = urand(3500, 14400);
-        m_uiRetaliationTimer = 0;
-        m_uiOverpowerTimer = urand(3600, 14800);
-
-        m_bHasTaunted = false;
-        m_bYelledForHeal = false;
+        if (m_isRegularMode)
+        {
+            switch (id)
+            {
+                case GARGOLMAR_ACTION_MORTAL_WOUND: return urand(6100, 14600);
+                case GARGOLMAR_ACTION_SURGE: return urand(12100, 25500);
+                case GARGOLMAR_ACTION_RETALIATION: return 30000;
+                case GARGOLMAR_ACTION_OVERPOWER: return urand(18100, 33700);
+                default: return 0;
+            }
+        }
+        else
+        {
+            switch (id)
+            {
+                case GARGOLMAR_ACTION_MORTAL_WOUND: return 15800;
+                case GARGOLMAR_ACTION_SURGE: return urand(12100, 15700);
+                case GARGOLMAR_ACTION_RETALIATION: return 30000;
+                case GARGOLMAR_ACTION_OVERPOWER: return urand(18100, 33700);
+                default: return 0;
+            }
+        }
     }
 
     void Aggro(Unit* /*pWho*/) override
@@ -81,97 +107,77 @@ struct boss_watchkeeper_gargolmarAI : public ScriptedAI
         }
     }
 
-    void MoveInLineOfSight(Unit* pWho) override
+    void MoveInLineOfSight(Unit* who) override
     {
-        if (!m_bHasTaunted && m_creature->IsWithinDistInMap(pWho, 60.0f))
+        if (!m_HasTaunted && m_creature->IsWithinDistInMap(who, 60.0f))
         {
             DoScriptText(SAY_TAUNT, m_creature);
-            m_bHasTaunted = true;
+            m_HasTaunted = true;
         }
 
-        ScriptedAI::MoveInLineOfSight(pWho);
+        ScriptedAI::MoveInLineOfSight(who);
     }
 
-    void KilledUnit(Unit* /*pVictim*/) override
+    void KilledUnit(Unit* /*victim*/) override
     {
         DoScriptText(urand(0, 1) ? SAY_KILL_1 : SAY_KILL_2, m_creature);
     }
 
-    void JustDied(Unit* /*pKiller*/) override
+    void JustDied(Unit* /*killer*/) override
     {
         DoScriptText(SAY_DIE, m_creature);
     }
 
-    void UpdateAI(const uint32 uiDiff) override
+    void ExecuteAction(uint32 action)
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
-            return;
-
-        if (m_uiMortalWoundTimer < uiDiff)
+        switch (action)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_MORTAL_WOUND : SPELL_MORTAL_WOUND_H) == CAST_OK)
-                m_uiMortalWoundTimer = urand(6100, 12200);
-        }
-        else
-            m_uiMortalWoundTimer -= uiDiff;
-
-        if (m_uiSurgeTimer < uiDiff)
-        {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_FARTHEST_AWAY, 0, SPELL_SURGE, SELECT_FLAG_PLAYER))
-            {
-                if (DoCastSpellIfCan(pTarget, SPELL_SURGE) == CAST_OK)
+            case GARGOLMAR_ACTION_YELL_FOR_HEAL:
+                if (m_creature->GetHealthPercent() < 40.0f)
                 {
-                    DoScriptText(SAY_SURGE, m_creature);
-                    m_uiSurgeTimer = urand(12100, 21700);
+                    DoScriptText(SAY_HEAL, m_creature);
+                    SetActionReadyStatus(action, false);
                 }
-            }
-        }
-        else
-            m_uiSurgeTimer -= uiDiff;
+                break;
+            case GARGOLMAR_ACTION_MORTAL_WOUND:
+                if (DoCastSpellIfCan(m_creature->GetVictim(), m_isRegularMode ? SPELL_MORTAL_WOUND : SPELL_MORTAL_WOUND_H) == CAST_OK)
+                {
+                    ResetCombatAction(action, GetSubsequentActionTimer(GargolmarActions(action)));
+                    return;
+                }
+                break;
+            case GARGOLMAR_ACTION_SURGE:
+                if (Unit* target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_FARTHEST_AWAY, 0, SPELL_SURGE, SELECT_FLAG_PLAYER))
+                {
+                    if (DoCastSpellIfCan(target, SPELL_SURGE) == CAST_OK)
+                        DoScriptText(SAY_SURGE, m_creature);
 
-        if (m_creature->GetHealthPercent() < 20.0f)
-        {
-            if (m_uiRetaliationTimer < uiDiff)
-            {
-                if (DoCastSpellIfCan(m_creature, SPELL_RETALIATION) == CAST_OK)
-                    m_uiRetaliationTimer = 30000;
-            }
-            else
-                m_uiRetaliationTimer -= uiDiff;
+                    ResetCombatAction(action, GetSubsequentActionTimer(GargolmarActions(action)));
+                    return;
+                }
+                break;
+            case GARGOLMAR_ACTION_RETALIATION:
+                if (m_creature->GetHealthPercent() < 20.0f && DoCastSpellIfCan(nullptr, SPELL_RETALIATION) == CAST_OK)
+                {
+                    ResetCombatAction(action, GetSubsequentActionTimer(GargolmarActions(action)));
+                    return;
+                }
+                break;
+            case GARGOLMAR_ACTION_OVERPOWER:
+                if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_OVERPOWER) == CAST_OK)
+                {
+                    ResetCombatAction(action, GetSubsequentActionTimer(GargolmarActions(action)));
+                    return;
+                }
+                break;
         }
-
-        if (m_uiOverpowerTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_OVERPOWER) == CAST_OK)
-                m_uiOverpowerTimer = urand(18100, 33700);
-        }
-        else
-            m_uiOverpowerTimer -= uiDiff;
-
-        if (!m_bYelledForHeal)
-        {
-            if (m_creature->GetHealthPercent() < 40.0f)
-            {
-                DoScriptText(SAY_HEAL, m_creature);
-                m_bYelledForHeal = true;
-            }
-        }
-
-        DoMeleeAttackIfReady();
     }
 };
 
-CreatureAI* GetAI_boss_watchkeeper_gargolmarAI(Creature* pCreature)
-{
-    return new boss_watchkeeper_gargolmarAI(pCreature);
-}
-
 void AddSC_boss_watchkeeper_gargolmar()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_watchkeeper_gargolmar";
-    pNewScript->GetAI = &GetAI_boss_watchkeeper_gargolmarAI;
+    pNewScript->GetAI = &GetNewAIInstance<boss_watchkeeper_gargolmarAI>;
     pNewScript->RegisterSelf();
 }

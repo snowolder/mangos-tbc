@@ -68,6 +68,7 @@ enum CreatureLinkingFlags
     FLAG_RESPAWN_ON_DEATH           = 0x0040,
     FLAG_RESPAWN_ON_RESPAWN         = 0x0080,
     FLAG_DESPAWN_ON_RESPAWN         = 0x0100,
+    FLAG_EVADE_ON_EVADE             = 0x4000,
 
     // Dynamic behaviour, out of combat
     FLAG_FOLLOW                     = 0x0200,
@@ -77,7 +78,7 @@ enum CreatureLinkingFlags
     FLAG_CANT_SPAWN_IF_BOSS_DEAD    = 0x0400,
     FLAG_CANT_SPAWN_IF_BOSS_ALIVE   = 0x0800,
 
-    LINKING_FLAG_INVALID            = 0x4000,               // TODO adjust when other flags are implemented
+    LINKING_FLAG_INVALID            = 0x8000,               // TODO adjust when other flags are implemented
 };
 
 // Structure holding the information for an entry
@@ -132,7 +133,7 @@ class CreatureLinkingMgr
         std::unordered_set<uint32> m_eventGuidTriggers;          // master by guid
 
         // Check-routine
-        static bool IsLinkingEntryValid(uint32 slaveEntry, CreatureLinkingInfo* pInfo, bool byEntry);
+        static bool IsLinkingEntryValid(uint32 slaveEntry, CreatureLinkingInfo* pTmp, bool byEntry);
 };
 
 /**
@@ -158,6 +159,8 @@ class CreatureLinkingHolder
 
         // Function to check if a passive spawning condition is met
         bool CanSpawn(Creature* pCreature) const;
+        // Helper function for recursive spawning-checks of an additional linked - also used in pooling
+        bool CanSpawn(uint32 lowGuid, Map* _map, CreatureLinkingInfo const*  pInfo, float sx, float sy) const;
 
         // This function lets a slave refollow his master
         bool TryFollowMaster(Creature* pCreature);
@@ -169,6 +172,7 @@ class CreatureLinkingHolder
             uint16 linkingFlag: 16;
             uint16 searchRange: 16;
             GuidList linkedGuids;
+            bool inUse = false;
         };
         // Structure associated to a master (guid case)
         struct InfoAndGuid
@@ -190,11 +194,9 @@ class CreatureLinkingHolder
         void SetFollowing(Creature* pWho, Creature* pWhom) const;
         // Helper function to return if a slave is in range of a boss
         bool IsSlaveInRangeOfMaster(Creature const* pSlave, Creature const* pBoss, uint16 searchRange) const;
-        bool IsSlaveInRangeOfMaster(Creature const* pBoss, float slaveX, float slaveY, uint16 searchRange) const;
+        bool IsSlaveInRangeOfMaster(Creature const* pBoss, float sX, float sY, uint16 searchRange) const;
         // Another helper function
         bool IsRespawnReady(uint32 dbLowGuid, Map* _map) const;
-        // Helper function for recursive spawning-checks of an additional linked
-        bool CanSpawn(uint32 lowGuid, Map* _map, CreatureLinkingInfo const*  pInfo, float sx, float sy) const;
 
         // Storage of Data (boss, flag, searchRange, GuidList) for action triggering
         HolderMap m_holderMap;

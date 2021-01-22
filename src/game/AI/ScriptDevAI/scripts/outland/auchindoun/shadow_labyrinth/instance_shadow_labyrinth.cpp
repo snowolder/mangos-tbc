@@ -21,7 +21,7 @@ SDComment: Some cleanup left along with save
 SDCategory: Auchindoun, Shadow Labyrinth
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "shadow_labyrinth.h"
 
 /* Shadow Labyrinth encounters:
@@ -46,14 +46,9 @@ void instance_shadow_labyrinth::OnObjectCreate(GameObject* pGo)
     switch (pGo->GetEntry())
     {
         case GO_REFECTORY_DOOR:
-            if (m_auiEncounter[2] == DONE)
+            if (m_auiEncounter[TYPE_HELLMAW] == DONE)
                 pGo->SetGoState(GO_STATE_ACTIVE);
             break;
-        case GO_SCREAMING_HALL_DOOR:
-            if (m_auiEncounter[3] == DONE)
-                pGo->SetGoState(GO_STATE_ACTIVE);
-            break;
-
         default:
             return;
     }
@@ -67,7 +62,14 @@ void instance_shadow_labyrinth::OnCreatureCreate(Creature* pCreature)
     {
         case NPC_VORPIL:
         case NPC_HELLMAW:
+        case NPC_BLACKHEART_THE_INCITER:
+        case NPC_MURMUR:
             m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
+            break;
+        case NPC_CONTAINMENT_BEAM:
+        case NPC_CABAL_SPELLBINDER:
+        case NPC_CABAL_SUMMONER:
+            m_npcEntryGuidCollection[pCreature->GetEntry()].push_back(pCreature->GetObjectGuid());
             break;
     }
 }
@@ -87,8 +89,6 @@ void instance_shadow_labyrinth::SetData(uint32 uiType, uint32 uiData)
             break;
 
         case TYPE_VORPIL:
-            if (uiData == DONE)
-                DoUseDoorOrButton(GO_SCREAMING_HALL_DOOR);
             m_auiEncounter[2] = uiData;
             break;
 
@@ -144,15 +144,19 @@ void instance_shadow_labyrinth::OnCreatureDeath(Creature* pCreature)
     if (pCreature->GetEntry() == NPC_CABAL_RITUALIST)
     {
         m_sRitualistsAliveGUIDSet.erase(pCreature->GetObjectGuid());
+        // TODO: Make containment beam collapse when a group of ritualists dies
 
         if (m_sRitualistsAliveGUIDSet.empty())
         {
-            if (Creature* pHellmaw = GetSingleCreatureFromStorage(NPC_HELLMAW))
+            if (Creature* hellmaw = GetSingleCreatureFromStorage(NPC_HELLMAW))
+                hellmaw->AI()->SendAIEvent(AI_EVENT_CUSTOM_A, hellmaw, hellmaw);
+
+            GuidVector containmentVector;
+            GetCreatureGuidVectorFromStorage(NPC_CONTAINMENT_BEAM, containmentVector);
+            for (ObjectGuid& guid : containmentVector)
             {
-                // yell intro and remove banish aura
-                DoScriptText(SAY_HELLMAW_INTRO, pHellmaw);
-                pHellmaw->GetMotionMaster()->MoveWaypoint();
-                pHellmaw->RemoveAurasDueToSpell(SPELL_BANISH);
+                if (Creature* pBeam = pCreature->GetMap()->GetCreature(guid))
+                    pBeam->ForcedDespawn();
             }
         }
     }
@@ -171,10 +175,10 @@ void instance_shadow_labyrinth::Load(const char* chrIn)
     std::istringstream loadStream(chrIn);
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -185,12 +189,59 @@ InstanceData* GetInstanceData_instance_shadow_labyrinth(Map* pMap)
     return new instance_shadow_labyrinth(pMap);
 }
 
+struct go_screaming_hall_door : public GameObjectAI
+{
+    go_screaming_hall_door(GameObject* go) : GameObjectAI(go), m_doorCheckNearbyPlayersTimer(1000), m_doorOpen(false)
+    {
+        m_pInstance = (ScriptedInstance*)go->GetInstanceData();
+    }
+
+    ScriptedInstance* m_pInstance;
+    uint32 m_doorCheckNearbyPlayersTimer;
+    bool m_doorOpen;
+
+    void UpdateAI(const uint32 diff) override
+    {
+        if (m_doorOpen)
+            return;
+
+        if (m_doorCheckNearbyPlayersTimer <= diff)
+        {
+            // If player is in 35y range of door, open it if Vorpil boss is done
+            if (m_go->GetInstanceData()->GetData(TYPE_VORPIL) == DONE)
+            {
+                m_go->GetMap()->ExecuteDistWorker(m_go, 35.0f, [&](Player * player)
+                {
+                    if (m_doorOpen)
+                        return;
+                    m_go->Use(player);
+                    m_doorOpen = true;
+
+                    if (Creature* pMurmur = m_pInstance->GetSingleCreatureFromStorage(NPC_MURMUR))
+                        pMurmur->AI()->SendAIEvent(AI_EVENT_CUSTOM_A, pMurmur, pMurmur);
+                });
+            }
+            m_doorCheckNearbyPlayersTimer = 1000;
+        }
+        else
+            m_doorCheckNearbyPlayersTimer -= diff;
+    }
+};
+
+GameObjectAI* GetAIgo_screaming_hall_door(GameObject* go)
+{
+    return new go_screaming_hall_door(go);
+}
+
 void AddSC_instance_shadow_labyrinth()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_shadow_labyrinth";
     pNewScript->GetInstanceData = &GetInstanceData_instance_shadow_labyrinth;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "go_screaming_hall_door";
+    pNewScript->GetGameObjectAI = &GetAIgo_screaming_hall_door;
     pNewScript->RegisterSelf();
 }

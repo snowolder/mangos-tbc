@@ -21,8 +21,9 @@ SDComment: Spell Felfire Line Up and Wrath-Scryer's Felfire npc are summoning ar
 SDCategory: Tempest Keep, The Arcatraz
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "arcatraz.h"
+#include "Spells/Scripts/SpellScript.h"
 
 enum
 {
@@ -45,12 +46,13 @@ enum
     SPELL_IMMOLATION_H              = 39007,
     SPELL_KNOCK_AWAY                = 36512,
     SPELL_FELFIRE_LINE_UP           = 35770,                // dummy spell - moves prespawned NPCs into a line
+    SPELL_FELFIRE                   = 35769,
     SPELL_CHARGE_TARGETING          = 36038,                // summons 21030 on target
     SPELL_CHARGE                    = 35754,                // script target on 21030; also dummy effect area effect target on 20978 - makes the target cast 35769
     SPELL_FELFIRE_SHOCK             = 35759,
     SPELL_FELFIRE_SHOCK_H           = 39006,
 
-    NPC_CHARGE_TARGET               = 21030,
+    NPC_WRATH_SCRYER_CHARGE_TARGET  = 21030,
 };
 
 static const DialogueEntry aIntroDialogue[] =
@@ -147,12 +149,11 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
         m_creature->LoadCreatureAddon(true);
 
         // should evade to the attack position
-        if (m_creature->isAlive())
+        if (m_creature->IsAlive())
             m_creature->GetMotionMaster()->MovePoint(1, aSoccotharesStartPos[0], aSoccotharesStartPos[1], aSoccotharesStartPos[2]);
 
         if (m_pInstance)
@@ -175,7 +176,7 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
 
     void JustSummoned(Creature* summoned) override
     {
-        if (summoned->GetEntry() == NPC_CHARGE_TARGET)
+        if (summoned->GetEntry() == NPC_WRATH_SCRYER_CHARGE_TARGET)
         {
             summoned->GetPosition(m_x, m_y, m_z);
             m_lineUpCounter = 1;
@@ -194,7 +195,7 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
             target->NearTeleportTo(fX, fY, m_creature->GetPositionZ(), m_creature->GetOrientation());
             m_lineUpCounter++;
         }
-        else if (spell->Id == SPELL_CHARGE && target->GetEntry() == NPC_CHARGE_TARGET)
+        else if (spell->Id == SPELL_CHARGE && target->GetEntry() == NPC_WRATH_SCRYER_CHARGE_TARGET)
             SetCombatMovement(true);
     }
 
@@ -217,12 +218,12 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     {
         DialogueUpdate(uiDiff);
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiFelfireShockTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), m_bIsRegularMode ? SPELL_FELFIRE_SHOCK : SPELL_FELFIRE_SHOCK_H) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), m_bIsRegularMode ? SPELL_FELFIRE_SHOCK : SPELL_FELFIRE_SHOCK_H) == CAST_OK)
                 m_uiFelfireShockTimer = urand(35000, 45000);
         }
         else
@@ -244,7 +245,7 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
         {
             if (m_uiFelfireLineupTimer <= uiDiff)
             {
-                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0))
+                if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, nullptr, SELECT_FLAG_PLAYER))
                 {
                     if (DoCastSpellIfCan(pTarget, SPELL_CHARGE_TARGETING) == CAST_OK)
                     {
@@ -280,17 +281,24 @@ struct boss_soccothratesAI : public ScriptedAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_boss_soccothrates(Creature* pCreature)
+struct SoccothratesCharge : public SpellScript
 {
-    return new boss_soccothratesAI(pCreature);
-}
+    void OnEffectExecute(Spell* spell, SpellEffectIndex effIdx) const
+    {
+        if (effIdx != EFFECT_INDEX_2)
+            return;
+
+        if (Unit* target = spell->GetUnitTarget())
+            target->CastSpell(nullptr, SPELL_FELFIRE, TRIGGERED_NONE);
+    }
+};
 
 void AddSC_boss_soccothrates()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_soccothrates";
-    pNewScript->GetAI = &GetAI_boss_soccothrates;
+    pNewScript->GetAI = &GetNewAIInstance<boss_soccothratesAI>;
     pNewScript->RegisterSelf();
+
+    RegisterSpellScript<SoccothratesCharge>("spell_soccothrates_charge");
 }

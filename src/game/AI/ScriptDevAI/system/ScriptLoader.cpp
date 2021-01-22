@@ -2,7 +2,7 @@
 * This program is free software licensed under GPL version 2
 * Please see the included DOCS/LICENSE.TXT for more information */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 
 // battlegrounds
 extern void AddSC_battleground();
@@ -24,8 +24,13 @@ extern void AddSC_guards();
 extern void AddSC_item_scripts();
 extern void AddSC_npc_professions();
 extern void AddSC_npcs_special();
+extern void AddSC_quests_scripts();
 extern void AddSC_spell_scripts();
 extern void AddSC_world_map_scripts();
+extern void AddSC_boss_highlord_kruul();
+extern void AddSC_war_effort();
+extern void AddSC_suns_reach_reclamation();
+extern void AddSC_shade_of_the_horseman();
 
 // eastern kingdoms
 extern void AddSC_blackrock_depths();                       // blackrock_depths
@@ -157,6 +162,7 @@ extern void AddSC_zulgurub();
 extern void AddSC_alterac_mountains();
 extern void AddSC_arathi_highlands();
 extern void AddSC_blasted_lands();
+extern void AddSC_boss_kazzakAI();
 extern void AddSC_burning_steppes();
 extern void AddSC_dun_morogh();
 extern void AddSC_eastern_plaguelands();
@@ -179,6 +185,7 @@ extern void AddSC_undercity();
 extern void AddSC_western_plaguelands();
 extern void AddSC_westfall();
 extern void AddSC_wetlands();
+extern void AddSC_world_eastern_kingdoms();
 
 // kalimdor
 extern void AddSC_instance_blackfathom_deeps();             // blackfathom_deeps
@@ -189,6 +196,10 @@ extern void AddSC_dark_portal();
 extern void AddSC_instance_dark_portal();
 extern void AddSC_hyjal();                                  // COT, hyjal
 extern void AddSC_boss_archimonde();
+extern void AddSC_boss_anetheron();
+extern void AddSC_boss_azgalor();
+extern void AddSC_boss_kazrogal();
+extern void AddSC_boss_rage_winterchill();
 extern void AddSC_instance_mount_hyjal();
 extern void AddSC_instance_old_hillsbrad();                 // COT, old_hillsbrad
 extern void AddSC_old_hillsbrad();
@@ -249,6 +260,7 @@ extern void AddSC_thousand_needles();
 extern void AddSC_thunder_bluff();
 extern void AddSC_ungoro_crater();
 extern void AddSC_winterspring();
+extern void AddSC_world_kalimdor();
 
 // northrend
 // removed
@@ -259,6 +271,7 @@ extern void AddSC_boss_shirrak();
 extern void AddSC_boss_nexusprince_shaffar();               // auchindoun, mana_tombs
 extern void AddSC_boss_pandemonius();
 extern void AddSC_mana_tombs();
+extern void AddSC_boss_yor();
 extern void AddSC_boss_anzu();                              // auchindoun, sethekk_halls
 extern void AddSC_boss_darkweaver_syth();
 extern void AddSC_boss_talon_king_ikiss();
@@ -293,6 +306,9 @@ extern void AddSC_boss_mekgineer_steamrigger();
 extern void AddSC_boss_warlord_kalithresh();
 extern void AddSC_instance_steam_vault();
 extern void AddSC_boss_hungarfen();                         // CR, Underbog
+extern void AddSC_boss_swamplord_muselek();
+extern void AddSC_boss_black_stalker();
+extern void AddSC_instance_underbog();
 extern void AddSC_boss_gruul();                             // gruuls_lair
 extern void AddSC_boss_high_king_maulgar();
 extern void AddSC_instance_gruuls_lair();
@@ -330,6 +346,8 @@ extern void AddSC_boss_pathaleon_the_calculator();
 extern void AddSC_instance_mechanar();
 
 extern void AddSC_blades_edge_mountains();
+extern void AddSC_bashir_landing();
+extern void AddSC_shartuul_transporter();
 extern void AddSC_boss_doomlordkazzak();
 extern void AddSC_boss_doomwalker();
 extern void AddSC_hellfire_peninsula();
@@ -338,6 +356,8 @@ extern void AddSC_netherstorm();
 extern void AddSC_shadowmoon_valley();
 extern void AddSC_shattrath_city();
 extern void AddSC_terokkar_forest();
+extern void AddSC_boss_terokk();
+extern void AddSC_OutlandWorldScript();
 extern void AddSC_zangarmarsh();
 
 void AddScripts()
@@ -362,8 +382,13 @@ void AddScripts()
     AddSC_item_scripts();
     AddSC_npc_professions();
     AddSC_npcs_special();
+    AddSC_quests_scripts();
     AddSC_spell_scripts();
     AddSC_world_map_scripts();
+    AddSC_boss_highlord_kruul();
+    AddSC_war_effort();
+    AddSC_suns_reach_reclamation();
+    AddSC_shade_of_the_horseman();
 
     // eastern kingdoms
     AddSC_blackrock_depths();                               // blackrock_depths
@@ -495,6 +520,7 @@ void AddScripts()
     AddSC_alterac_mountains();
     AddSC_arathi_highlands();
     AddSC_blasted_lands();
+    AddSC_boss_kazzakAI();
     AddSC_burning_steppes();
     AddSC_dun_morogh();
     AddSC_eastern_plaguelands();
@@ -517,6 +543,7 @@ void AddScripts()
     AddSC_western_plaguelands();
     AddSC_westfall();
     AddSC_wetlands();
+    AddSC_world_eastern_kingdoms();
 
     // kalimdor
     AddSC_instance_blackfathom_deeps();                     // blackfathom deeps
@@ -527,6 +554,10 @@ void AddScripts()
     AddSC_instance_dark_portal();
     AddSC_hyjal();                                          // CoT, hyjal
     AddSC_boss_archimonde();
+    AddSC_boss_anetheron();
+    AddSC_boss_azgalor();
+    AddSC_boss_kazrogal();
+    AddSC_boss_rage_winterchill();
     AddSC_instance_mount_hyjal();
     AddSC_instance_old_hillsbrad();                         // CoT, old_hillsbrand
     AddSC_old_hillsbrad();
@@ -587,6 +618,7 @@ void AddScripts()
     AddSC_thunder_bluff();
     AddSC_ungoro_crater();
     AddSC_winterspring();
+    AddSC_world_kalimdor();
 
     // northrend
     // removed
@@ -597,6 +629,7 @@ void AddScripts()
     AddSC_boss_nexusprince_shaffar();                       // auchindoun, mana_tombs
     AddSC_boss_pandemonius();
     AddSC_mana_tombs();
+    AddSC_boss_yor();
     AddSC_boss_anzu();                                      // auchindoun, sethekk_halls
     AddSC_boss_darkweaver_syth();
     AddSC_boss_talon_king_ikiss();
@@ -631,6 +664,9 @@ void AddScripts()
     AddSC_boss_warlord_kalithresh();
     AddSC_instance_steam_vault();
     AddSC_boss_hungarfen();                                 // CR, Underbog
+    AddSC_boss_swamplord_muselek();
+    AddSC_boss_black_stalker();
+    AddSC_instance_underbog();
     AddSC_boss_gruul();                                     // gruuls_lair
     AddSC_boss_high_king_maulgar();
     AddSC_instance_gruuls_lair();
@@ -668,6 +704,8 @@ void AddScripts()
     AddSC_instance_mechanar();
 
     AddSC_blades_edge_mountains();
+    AddSC_bashir_landing();
+    AddSC_shartuul_transporter();
     AddSC_boss_doomlordkazzak();
     AddSC_boss_doomwalker();
     AddSC_hellfire_peninsula();
@@ -676,5 +714,7 @@ void AddScripts()
     AddSC_shadowmoon_valley();
     AddSC_shattrath_city();
     AddSC_terokkar_forest();
+    AddSC_boss_terokk();
+    AddSC_OutlandWorldScript();
     AddSC_zangarmarsh();
 }

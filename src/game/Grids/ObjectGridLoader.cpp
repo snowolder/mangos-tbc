@@ -79,7 +79,7 @@ class ObjectWorldLoader
 {
     public:
         explicit ObjectWorldLoader(ObjectGridLoader& gloader)
-            : i_cell(gloader.i_cell), i_grid(gloader.i_grid), i_map(gloader.i_map), i_corpses(0)
+            : i_cell(gloader.i_cell), i_map(gloader.i_map), i_corpses(0)
         {}
 
         void Visit(CorpseMapType& m);
@@ -88,7 +88,6 @@ class ObjectWorldLoader
 
     private:
         Cell i_cell;
-        NGridType& i_grid;
         Map* i_map;
     public:
         uint32 i_corpses;
@@ -96,6 +95,13 @@ class ObjectWorldLoader
 
 template<class T> void addUnitState(T* /*obj*/, CellPair const& /*cell_pair*/)
 {
+}
+
+template<> void addUnitState(GameObject* obj, CellPair const& cell_pair)
+{
+    Cell cell(cell_pair);
+
+    obj->SetCurrentCell(cell);
 }
 
 template<> void addUnitState(Creature* obj, CellPair const& cell_pair)
@@ -110,21 +116,31 @@ void LoadHelper(CellGuidSet const& guid_set, CellPair& cell, GridRefManager<T>& 
 {
     BattleGround* bg = map->IsBattleGroundOrArena() ? ((BattleGroundMap*)map)->GetBG() : nullptr;
 
-    for (CellGuidSet::const_iterator i_guid = guid_set.begin(); i_guid != guid_set.end(); ++i_guid)
+    for (uint32 guid : guid_set)
     {
-        uint32 guid = *i_guid;
-
-        T* obj = new T;
+        T* obj;
+        if (std::is_same<T, GameObject>::value) // TODO: When c++17 is added change to constexpr
+        {
+            GameObjectData const* data = sObjectMgr.GetGOData(guid);
+            MANGOS_ASSERT(data);
+            obj = (T*)GameObject::CreateGameObject(data->id);
+        }
+        else
+            obj = new T;
         // sLog.outString("DEBUG: LoadHelper from table: %s for (guid: %u) Loading",table,guid);
-        if (!obj->LoadFromDB(guid, map))
+        if (!obj->LoadFromDB(guid, map, guid))
         {
             delete obj;
             continue;
         }
 
-        grid.AddGridObject(obj);
+        if (!obj->IsCreature())
+        {
+            grid.AddGridObject(obj);
 
-        addUnitState(obj, cell);
+            addUnitState(obj, cell);
+        }
+
         obj->SetMap(map);
         obj->AddToWorld();
         if (obj->isActiveObject())
@@ -144,12 +160,12 @@ void LoadHelper(CellCorpseSet const& cell_corpses, CellPair& cell, CorpseMapType
     if (cell_corpses.empty())
         return;
 
-    for (CellCorpseSet::const_iterator itr = cell_corpses.begin(); itr != cell_corpses.end(); ++itr)
+    for (const auto& cell_corpse : cell_corpses)
     {
-        if (itr->second != map->GetInstanceId())
+        if (cell_corpse.second != map->GetInstanceId())
             continue;
 
-        uint32 player_lowguid = itr->first;
+        uint32 player_lowguid = cell_corpse.first;
 
         Corpse* obj = sObjectAccessor.GetCorpseForPlayerGUID(ObjectGuid(HIGHGUID_PLAYER, player_lowguid));
         if (!obj)
@@ -241,7 +257,7 @@ void ObjectGridLoader::LoadN(void)
             loader.Load(i_grid(x, y), *this);
         }
     }
-    DEBUG_LOG("%u GameObjects, %u Creatures, and %u Corpses/Bones loaded for grid %u on map %u", i_gameObjects, i_creatures, i_corpses, i_grid.GetGridId(), i_map->GetId());
+    DETAIL_FILTER_LOG(LOG_FILTER_MAP_LOADING, "%u GameObjects, %u Creatures, and %u Corpses/Bones loaded for grid %u on map %u", i_gameObjects, i_creatures, i_corpses, i_grid.GetGridId(), i_map->GetId());
 }
 
 void ObjectGridUnloader::MoveToRespawnN()
@@ -291,11 +307,10 @@ void
 ObjectGridStoper::Visit(CreatureMapType& m)
 {
     // stop any fights at grid de-activation and remove dynobjects created at cast by creatures
-    for (CreatureMapType::iterator iter = m.begin(); iter != m.end(); ++iter)
+    for (auto& iter : m)
     {
-        iter->getSource()->CombatStop();
-        iter->getSource()->DeleteThreatList();
-        iter->getSource()->RemoveAllDynObjects();
+        iter.getSource()->CombatStop();
+        iter.getSource()->RemoveAllDynObjects();
     }
 }
 

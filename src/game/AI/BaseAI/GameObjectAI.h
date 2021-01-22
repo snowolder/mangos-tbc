@@ -19,8 +19,11 @@
 #define DEF_GAMEOBJECT_AI_H
 
 #include "Platform/Define.h"
+#include "AI/BaseAI/AIDefines.h"
 
 class GameObject;
+class Unit;
+struct SpellEntry;
 
 class GameObjectAI
 {
@@ -46,9 +49,29 @@ class GameObjectAI
 
         /**
         * Called when the GO has its state changed in GameObject::SetLootState (whatever the reason is)
-        * No params as LootState to which the GO is changed to is accessible in the GameObjectAI through getLootState()
+        * No params as LootState to which the GO is changed to is accessible in the GameObjectAI through GetLootState()
         */
         virtual void OnLootStateChange() {}
+
+        /*
+        * Called when a GO appears in the world to normal observers
+        */
+        virtual void JustSpawned() {}
+
+        /*
+        * Called when a GO disappears from the world to normal observers
+        */
+        virtual void JustDespawned() {}
+
+        /*
+        * Enables generic receiving of events
+        */
+        virtual void ReceiveAIEvent(AIEventType /*eventType*/, uint32 /*miscValue*/ = 0) {}
+        
+        /*
+         * Enables handling of GO Use by all units
+         */
+        virtual void OnUse(Unit* /*user*/, SpellEntry const* /*spellInfo*/);
 
     protected:
         GameObject* m_go;

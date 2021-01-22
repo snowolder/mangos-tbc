@@ -21,7 +21,7 @@ SDComment:
 SDCategory: Shadowfang Keep
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "shadowfang_keep.h"
 
 instance_shadowfang_keep::instance_shadowfang_keep(Map* pMap) : ScriptedInstance(pMap)
@@ -79,7 +79,7 @@ void instance_shadowfang_keep::OnCreatureDeath(Creature* pCreature)
             {
                 if (Creature* nandos = GetSingleCreatureFromStorage(NPC_MASTER_NANDOS))
                 {
-                    if (nandos->isInCombat())   // Wolf Master Nandos already joined the fight: no need to go further
+                    if (nandos->IsInCombat())   // Wolf Master Nandos already joined the fight: no need to go further
                         return;
                     DoScriptText(YELL_PACK_DEAD, nandos);
                     nandos->SetWalk(false);
@@ -124,7 +124,7 @@ void instance_shadowfang_keep::DoSpeech()
     Creature* pAda = GetSingleCreatureFromStorage(NPC_ADA);
     Creature* pAsh = GetSingleCreatureFromStorage(NPC_ASH);
 
-    if (pAda && pAda->isAlive() && pAsh && pAsh->isAlive())
+    if (pAda && pAda->IsAlive() && pAsh && pAsh->IsAlive())
     {
         DoScriptText(SAY_BOSS_DIE_AD, pAda);
         DoScriptText(SAY_BOSS_DIE_AS, pAsh);
@@ -215,10 +215,10 @@ void instance_shadowfang_keep::Load(const char* chrIn)
     loadStream >> m_auiEncounter[0] >> m_auiEncounter[1] >> m_auiEncounter[2] >> m_auiEncounter[3]
                >> m_auiEncounter[4] >> m_auiEncounter[5];
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -231,9 +231,7 @@ InstanceData* GetInstanceData_instance_shadowfang_keep(Map* pMap)
 
 void AddSC_instance_shadowfang_keep()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_shadowfang_keep";
     pNewScript->GetInstanceData = &GetInstanceData_instance_shadowfang_keep;
     pNewScript->RegisterSelf();

@@ -32,65 +32,233 @@ npc_protectorate_demolitionist
 npc_captured_vanguard
 npc_drijya
 npc_dimensius
+npc_saeed
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 #include "AI/ScriptDevAI/base/pet_ai.h"
+#include "AI/ScriptDevAI/scripts/outland/world_outland.h"
+#include "Spells/Scripts/SpellScript.h"
 
 /*######
 ## npc_manaforge_control_console
 ######*/
 enum
 {
-    EMOTE_START                  = -1000211,
-    EMOTE_60                     = -1000212,
-    EMOTE_30                     = -1000213,
-    EMOTE_10                     = -1000214,
-    EMOTE_COMPLETE               = -1000215,
-    EMOTE_ABORT                  = -1000216,
+    EMOTE_START = -1000211,
+    EMOTE_60 = -1000212,
+    EMOTE_30 = -1000213,
+    EMOTE_10 = -1000214,
+    EMOTE_COMPLETE = -1000215,
+    EMOTE_ABORT = -1000216,
 
-    NPC_BNAAR_C_CONSOLE          = 20209,
-    NPC_CORUU_C_CONSOLE          = 20417,
-    NPC_DURO_C_CONSOLE           = 20418,
-    NPC_ARA_C_CONSOLE            = 20440,
+    SAY_MANFORGE_SHUTDOWN_1 = -1000474,
+    SAY_MANFORGE_SHUTDOWN_2 = -1000475,
+    YEL_MANFORGE_SHUTDOWN = -1000476,
 
-    NPC_SUNFURY_TECH             = 20218,
-    NPC_SUNFURY_PROT             = 20436,
+    GOSSIP_TEXT_CONSOLE = 10045,
+    GOSSIP_TEXT_CONSOLE_NOQUEST = 9922,
 
-    NPC_ARA_TECH                 = 20438,
-    NPC_ARA_ENGI                 = 20439,
-    NPC_ARA_GORKLONN             = 20460,
+    GO_BANAAR_C_CONSOLE = 183770,
+    GO_CORUU_C_CONSOLE = 183956,
+    GO_DURO_C_CONSOLE = 184311,
+    GO_ARA_C_CONSOLE = 184312,
 
-    QUEST_SHUTDOWN_BNAAR_ALDOR   = 10299,
+    NPC_BNAAR_C_CONSOLE = 20209,
+    NPC_CORUU_C_CONSOLE = 20417,
+    NPC_DURO_C_CONSOLE = 20418,
+    NPC_ARA_C_CONSOLE = 20440,
+
+    NPC_SUNFURY_TECH = 20218,
+    NPC_SUNFURY_PROT = 20436, // never used?
+    NPC_SUNFURY_WARP_MASTER = 18857,
+    NPC_SUNFURY_WARP_ENGINEER = 18852,
+    NPC_SUNFURY_RESEARCHER = 20136,
+
+    NPC_ARA_TECH = 20438,
+    NPC_ARA_ENGI = 20439,
+    NPC_ARA_GORKLONN = 20460,
+
+    QUEST_SHUTDOWN_BNAAR_ALDOR = 10299,
     QUEST_SHUTDOWN_BNAAR_SCRYERS = 10329,
-    QUEST_SHUTDOWN_CORUU_ALDOR   = 10321,
+    QUEST_SHUTDOWN_CORUU_ALDOR = 10321,
     QUEST_SHUTDOWN_CORUU_SCRYERS = 10330,
-    QUEST_SHUTDOWN_DURO_ALDOR    = 10322,
-    QUEST_SHUTDOWN_DURO_SCRYERS  = 10338,
-    QUEST_SHUTDOWN_ARA_ALDOR     = 10323,
-    QUEST_SHUTDOWN_ARA_SCRYERS   = 10365,
+    QUEST_SHUTDOWN_DURO_ALDOR = 10322,
+    QUEST_SHUTDOWN_DURO_SCRYERS = 10338,
+    QUEST_SHUTDOWN_ARA_ALDOR = 10323,
+    QUEST_SHUTDOWN_ARA_SCRYERS = 10365,
 
-    ITEM_BNAAR_ACESS_CRYSTAL     = 29366,
-    ITEM_CORUU_ACESS_CRYSTAL     = 29396,
-    ITEM_DURO_ACESS_CRYSTAL      = 29397,
-    ITEM_ARA_ACESS_CRYSTAL       = 29411,
+    ITEM_BNAAR_ACESS_CRYSTAL = 29366,
+    ITEM_CORUU_ACESS_CRYSTAL = 29396,
+    ITEM_DURO_ACESS_CRYSTAL = 29397,
+    ITEM_ARA_ACESS_CRYSTAL = 29411,
 
-    SPELL_DISABLE_VISUAL         = 35031,
-    SPELL_INTERRUPT_1            = 35016,                   // ACID mobs should cast this
-    SPELL_INTERRUPT_2            = 35176,                   // ACID mobs should cast this (Manaforge Ara-version)
+    SPELL_DISABLE_VISUAL = 35031,
+    SPELL_INTERRUPT_1 = 35016,
+    SPELL_INTERRUPT_2 = 35176,
 };
+
+#define GOSSIP_ITEM_SHUTDOWN "<Begin emergency shutdown.>"
+
+static float m_afBanaarTechCoords[7][3] =
+{
+    { 2871.506f, 4170.109f, 164.008f }, // Spawn (back of room), two paths to take
+    { 2895.987f, 4155.230f, 163.65f }, // WP 1:1
+    { 2927.997f, 4172.454f, 163.194f }, // WP 1:2
+    { 2883.564f, 4202.966f, 163.454f }, // WP 2:1
+    { 2908.597f, 4204.297f, 162.495f }, // WP 2:2
+    { 2946.52f, 4201.42f, 163.47f }, // Spawn (front of room), closer to thing
+    { 2931.257f, 4194.726f, 163.563f }  // WP 3:1
+};
+static float m_afCoruuTechCoords[6][3] =
+{
+    { 2391.320f, 2724.3f  , 134.493f }, // spawn left
+    { 2419.598f, 2742.209f, 133.186f }, // Path 1 WP 1
+    { 2459.519f, 2738.630f, 133.085f }, // spawn behind
+    { 2438.913f, 2748.224f, 134.493f }, // Path 2 WP 1: 
+    { 2426.102f, 2800.459f, 134.359f }, // spawn right
+    { 2427.665f, 2768.984f, 132.92f }  // Path 3 WP 1
+};
+static float m_afDuroTechCoords[7][3] =
+{
+    { 2998.085f, 2133.911f, 165.328f }, // Spawn (back of room), two paths to take
+    { 3005.962f, 2179.238f, 164.428f }, // WP 1:1
+    { 2989.977f, 2190.82f, 164.047f }, // WP 1:2
+    { 2964.918f, 2156.918f, 163.904f }, // WP 2:1
+    { 2966.12f , 2174.327f, 163.292f }, // WP 2:2 
+    { 2955.571f, 2232.075f, 163.920f }, // Spawn behind
+    { 2968.885f, 2199.937f, 165.329f }  // Path 3 WP 1: 
+};
+static float m_afAraTechCoords[18][3] =
+{
+    // (Spawn Group 1, on left)
+    { 4047.705f, 4005.494f, 194.226f },
+    { 4051.31f , 4001.424f, 194.023f },
+    { 4052.456f, 4005.68f , 194.012f },
+
+    { 4026.788f, 4025.399f, 192.597f }, // Path 1 WP 1
+    { 4028.071f, 4021.542f, 192.526f }, // Path 2 WP 1
+    { 4029.142f, 4027.635f, 193.009f }, // Path 3 WP 1
+
+                                     // (Spawn Group 2, on right)
+    { 3974.354f, 4024.723f, 194.227f },
+    { 3969.603f, 4022.106f, 194.227f },
+    { 3968.554f, 4025.744f, 193.1f },
+
+    { 4003.378f, 4033.91f , 192.706f }, // Path 4 WP 1
+    { 3999.738f, 4029.533f, 192.384f }, // Path 5 WP 1
+    { 3999.792f, 4035.362f, 193.058f }, // Path 6 WP 1
+
+                                     // (Spawn Group 3, behind player)
+    { 4024.814f, 4072.806f, 192.82f },
+    { 4027.551f, 4077.417f, 192.82f },
+    { 4024.087f, 4078.282f, 192.819f },
+
+    { 4017.536f, 4043.038f, 193.896f }, // Path 7 WP 1
+    { 4021.246f, 4042.021f, 193.919f }, // Path 8 WP 1
+    { 4013.202f, 4043.497f, 193.848f }  // Path 9 WP 1
+};
+
+/*######
++## npc_manaforge_spawnAI (anything summoned by manaforge)
++######*/
+
+struct npc_manaforge_spawnAI : public ScriptedAI
+{
+    npc_manaforge_spawnAI(Creature* pCreature) : ScriptedAI(pCreature) { Reset(); }
+
+    ObjectGuid m_manaforgeGuid;
+
+    void Reset() override
+    {
+        m_creature->ClearInCombat();
+    }
+
+    void EnterEvadeMode() override
+    {
+        Reset();
+        Creature *manaforge;
+
+        if (m_manaforgeGuid)
+            if (manaforge = m_creature->GetMap()->GetCreature(m_manaforgeGuid))
+            {
+                uint32 uiManaforgeEntry = manaforge->GetEntry();
+
+                m_creature->GetMotionMaster()->Clear();
+                float fDistance = m_creature->GetDistance(manaforge);
+                if (fDistance < 20) // If within cast range
+                {
+                    m_creature->SetFacingToObject(manaforge);
+                    if (uiManaforgeEntry == NPC_ARA_C_CONSOLE)
+                    {
+                        m_creature->GetMotionMaster()->MovePoint(0, m_creature->GetPositionX(), m_creature->GetPositionY(), m_creature->GetPositionZ()); // Why must I do this? They walk back to spawn point otherwise (and only ara mobs do this)
+                        m_creature->CastSpell(m_creature, SPELL_INTERRUPT_2, TRIGGERED_OLD_TRIGGERED); // Ara mobs
+
+                    }
+                    else
+                        m_creature->CastSpell(m_creature, SPELL_INTERRUPT_1, TRIGGERED_OLD_TRIGGERED); // Other consoles
+
+                }
+                else
+                {
+                    // Otherwise need to move closer
+                    float fX, fY; // fZ will just be creatures own z
+                    float fAngle = m_creature->GetAngle(manaforge);
+                    uint32 uiMPID; // need to set this accoringly so creature will cast spell after running
+
+                    switch (uiManaforgeEntry)
+                    {
+                        case NPC_DURO_C_CONSOLE:
+                            uiMPID = 1;
+                            break;
+                        case NPC_BNAAR_C_CONSOLE:
+                            uiMPID = 3;
+                            break;
+                        default:
+                            uiMPID = 0;
+                            break;
+                    }
+
+                    /* Given an origin (x,y) and line distance "d" which makes an angle "a" with the x-axis, the coordinates for the other point are:
+                                        * x' = x + (d * cos(a))
+                                        * y' = y + (d * sin(a)) */
+
+                    fX = m_creature->GetPositionX() + ((fDistance - 15) * cosf(fAngle));
+                    fY = m_creature->GetPositionY() + ((fDistance - 15) * sinf(fAngle));
+
+                    m_creature->GetMotionMaster()->MovePoint(uiMPID, fX, fY, m_creature->GetPositionZ());
+                }
+            }
+    }
+
+    void UpdateAI(const uint32 /*uiDiff*/) override
+    {
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+            return;
+
+        DoMeleeAttackIfReady();
+    }
+};
+
+UnitAI* GetAI_npc_manaforge_spawnAI(Creature* pCreature)
+{
+    return new npc_manaforge_spawnAI(pCreature);
+}
 
 struct npc_manaforge_control_consoleAI : public ScriptedAI
 {
-    npc_manaforge_control_consoleAI(Creature* pCreature) : ScriptedAI(pCreature) {Reset();}
+    npc_manaforge_control_consoleAI(Creature* pCreature) : ScriptedAI(pCreature) { Reset(); }
 
     ObjectGuid m_playerGuid;
     ObjectGuid m_consoleGuid;
     uint32 m_uiEventTimer;
     uint32 m_uiWaveTimer;
     uint32 m_uiPhase;
+    uint32 m_uiHardResetTimer;
     bool   m_bWave;
+    bool   m_bShutdownSaid;
+    std::vector<ObjectGuid> m_vSummonGuids;
 
     void Reset() override
     {
@@ -100,100 +268,240 @@ struct npc_manaforge_control_consoleAI : public ScriptedAI
         m_uiWaveTimer = 0;
         m_uiPhase = 1;
         m_bWave = false;
+        m_bShutdownSaid = false;
+        m_uiHardResetTimer = 3 * MINUTE * IN_MILLISECONDS;
     }
 
-    /*void SpellHit(Unit *caster, const SpellEntry *spell) override
+    void ResetControlConsoleAndDespawn()
     {
-        // we have no way of telling the creature was hit by spell -> got aura applied after 10-12 seconds
-        // then no way for the mobs to actually stop the shutdown as intended.
-        if (spell->Id == SPELL_INTERRUPT_1)
-            ...
-    }*/
+        for (ObjectGuid& guid : m_vSummonGuids)
+        {
+            if (Creature* summon = m_creature->GetMap()->GetCreature(guid))
+                summon->ForcedDespawn(100); // requires delay, to prevent calling spell::cancel, as the call can originate from channeled spell finish
+        }
+        m_vSummonGuids.clear();
 
-    void JustDied(Unit* /*pKiller*/) override
+        switch (m_creature->GetEntry())
+        {
+            case NPC_BNAAR_C_CONSOLE:
+                if (GameObject* pGo = GetClosestGameObjectWithEntry(m_creature, GO_BANAAR_C_CONSOLE, 20.0f))
+                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+                break;
+            case NPC_CORUU_C_CONSOLE:
+                if (GameObject* pGo = GetClosestGameObjectWithEntry(m_creature, GO_CORUU_C_CONSOLE, 20.0f))
+                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+                break;
+            case NPC_DURO_C_CONSOLE:
+                if (GameObject* pGo = GetClosestGameObjectWithEntry(m_creature, GO_DURO_C_CONSOLE, 20.0f))
+                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+                break;
+            case NPC_ARA_C_CONSOLE:
+                if (GameObject* pGo = GetClosestGameObjectWithEntry(m_creature, GO_ARA_C_CONSOLE, 20.0f))
+                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+                break;
+        }
+        m_creature->ForcedDespawn();
+    }
+
+    void DoFailEvent()
     {
         DoScriptText(EMOTE_ABORT, m_creature);
 
-        Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid);
+        // Fail players quests
+        // Handle all players in group (if they took quest)
 
-        if (pPlayer)
+        if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid))
         {
-            switch (m_creature->GetEntry())
+            if (Group* pGroup = pPlayer->GetGroup())
             {
-                case NPC_BNAAR_C_CONSOLE:
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_BNAAR_ALDOR);
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_BNAAR_SCRYERS);
-                    break;
-                case NPC_CORUU_C_CONSOLE:
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_CORUU_ALDOR);
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_CORUU_SCRYERS);
-                    break;
-                case NPC_DURO_C_CONSOLE:
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_DURO_ALDOR);
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_DURO_SCRYERS);
-                    break;
-                case NPC_ARA_C_CONSOLE:
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_ARA_ALDOR);
-                    pPlayer->FailQuest(QUEST_SHUTDOWN_ARA_SCRYERS);
-                    break;
+                for (GroupReference* pRef = pGroup->GetFirstMember(); pRef != nullptr; pRef = pRef->next())
+                {
+                    if (Player* pMember = pRef->getSource())
+                    {
+                        switch (m_creature->GetEntry())
+                        {
+                            case NPC_BNAAR_C_CONSOLE:
+                                if (pMember->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_BNAAR_ALDOR);
+                                else if (pMember->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_BNAAR_SCRYERS);
+                                break;
+                            case NPC_CORUU_C_CONSOLE:
+                                if (pMember->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_CORUU_ALDOR);
+                                else if (pMember->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_CORUU_SCRYERS);
+                                break;
+                            case NPC_DURO_C_CONSOLE:
+                                if (pMember->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_DURO_ALDOR);
+                                else if (pMember->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_DURO_SCRYERS);
+                                break;
+                            case NPC_ARA_C_CONSOLE:
+                                if (pMember->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_ARA_ALDOR);
+                                else if (pMember->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pMember->FailQuest(QUEST_SHUTDOWN_ARA_SCRYERS);
+                                break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                switch (m_creature->GetEntry())
+                {
+                    case NPC_BNAAR_C_CONSOLE:
+                        if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_BNAAR_ALDOR);
+                        else
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_BNAAR_SCRYERS);
+                        break;
+                    case NPC_CORUU_C_CONSOLE:
+                        if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_CORUU_ALDOR);
+                        else
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_CORUU_SCRYERS);
+                        break;
+                    case NPC_DURO_C_CONSOLE:
+                        if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_DURO_ALDOR);
+                        else
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_DURO_SCRYERS);
+                        break;
+                    case NPC_ARA_C_CONSOLE:
+                        if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE)
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_ARA_ALDOR);
+                        else
+                            pPlayer->FailQuest(QUEST_SHUTDOWN_ARA_SCRYERS);
+                        break;
+                }
             }
         }
 
-        if (GameObject* pGo = m_creature->GetMap()->GetGameObject(m_consoleGuid))
-            pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+        ResetControlConsoleAndDespawn();
     }
 
     void DoWaveSpawnForCreature(Creature* pCreature)
     {
         Creature* pAdd = nullptr;
+        uint8 route; // determines path taken if more than 2 starts
 
         switch (pCreature->GetEntry())
         {
             case NPC_BNAAR_C_CONSOLE:
                 if (urand(0, 1))
                 {
-                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2933.68f, 4162.55f, 164.00f, 1.60f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 2927.36f, 4212.97f, 164.00f);
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afBanaarTechCoords[0][0], m_afBanaarTechCoords[0][1], m_afBanaarTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afBanaarTechCoords[1][0], m_afBanaarTechCoords[1][1], m_afBanaarTechCoords[1][2]);
+                    }
                 }
                 else
                 {
-                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2927.36f, 4212.97f, 164.00f, 4.94f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 2933.68f, 4162.55f, 164.00f);
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afBanaarTechCoords[0][0], m_afBanaarTechCoords[0][1], m_afBanaarTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(2, m_afBanaarTechCoords[3][0], m_afBanaarTechCoords[3][1], m_afBanaarTechCoords[3][2]);
+                    }
                 }
                 m_uiWaveTimer = 30000;
                 break;
             case NPC_CORUU_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2445.21f, 2765.26f, 134.49f, 3.93f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2424.21f, 2740.15f, 133.81f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2429.86f, 2731.85f, 134.53f, 1.31f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2435.37f, 2766.04f, 133.81f);
-                m_uiWaveTimer = 20000;
-                break;
-            case NPC_DURO_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2986.80f, 2205.36f, 165.37f, 3.74f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2985.15f, 2197.32f, 164.79f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2952.91f, 2191.20f, 165.32f, 0.22f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2060.01f, 2185.27f, 164.67f);
-                m_uiWaveTimer = 15000;
-                break;
-            case NPC_ARA_C_CONSOLE:
-                if (urand(0, 1))
+                route = urand(0, 2);
+                if (route == 0)
                 {
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 4035.11f, 4038.97f, 194.27f, 2.57f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4003.42f, 4040.19f, 193.49f);
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 4033.66f, 4036.79f, 194.28f, 2.57f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4003.42f, 4040.19f, 193.49f);
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 4037.13f, 4037.30f, 194.23f, 2.57f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4003.42f, 4040.19f, 193.49f);
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afCoruuTechCoords[0][0], m_afCoruuTechCoords[0][1], m_afCoruuTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afCoruuTechCoords[1][0], m_afCoruuTechCoords[1][1], m_afCoruuTechCoords[1][2]);
+                    }
+                }
+                else if (route == 1)
+                {
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afCoruuTechCoords[2][0], m_afCoruuTechCoords[2][1], m_afCoruuTechCoords[2][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afCoruuTechCoords[3][0], m_afCoruuTechCoords[3][1], m_afCoruuTechCoords[3][2]);
+                    }
                 }
                 else
                 {
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 3099.59f, 4049.30f, 194.22f, 0.05f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4028.01f, 4035.17f, 193.59f);
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 3999.72f, 4046.75f, 194.22f, 0.05f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4028.01f, 4035.17f, 193.59f);
-                    if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, 3996.81f, 4048.26f, 194.22f, 0.05f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                        pAdd->GetMotionMaster()->MovePoint(0, 4028.01f, 4035.17f, 193.59f);
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afCoruuTechCoords[4][0], m_afCoruuTechCoords[4][1], m_afCoruuTechCoords[4][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afCoruuTechCoords[5][0], m_afCoruuTechCoords[5][1], m_afCoruuTechCoords[5][2]);
+                    }
+                }
+                m_uiWaveTimer = 20000;
+                break;
+            case NPC_DURO_C_CONSOLE:
+                route = urand(0, 2);
+                if (route == 0)
+                {
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afDuroTechCoords[0][0], m_afDuroTechCoords[0][1], m_afDuroTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afDuroTechCoords[1][0], m_afDuroTechCoords[1][1], m_afDuroTechCoords[1][2]);
+                    }
+                }
+                else if (route == 1)
+                {
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afDuroTechCoords[0][0], m_afDuroTechCoords[0][1], m_afDuroTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(2, m_afDuroTechCoords[3][0], m_afDuroTechCoords[3][1], m_afDuroTechCoords[3][2]);
+                    }
+                }
+                else
+                {
+                    if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afDuroTechCoords[5][0], m_afDuroTechCoords[5][1], m_afDuroTechCoords[5][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                    {
+                        pAdd->SetWalk(false);
+                        pAdd->GetMotionMaster()->MovePoint(4, m_afDuroTechCoords[6][0], m_afDuroTechCoords[6][1], m_afDuroTechCoords[6][2]);
+                    }
+                }
+                m_uiWaveTimer = 15000;
+                break;
+            case NPC_ARA_C_CONSOLE:
+                route = urand(0, 2);
+                if (route == 0)
+                {
+                    for (uint8 i = 0; i < 3; i++)
+                        if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, m_afAraTechCoords[i][0], m_afAraTechCoords[i][1], m_afAraTechCoords[i][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                        {
+                            pAdd->SetWalk(false);
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[i + 3][0], m_afAraTechCoords[i + 3][1], m_afAraTechCoords[i + 3][2]);
+                        }
+                    if (!urand(0, 2)) // 1 in 3 chance to spawn a engineer
+                        if (pAdd = m_creature->SummonCreature(NPC_ARA_ENGI, m_afAraTechCoords[0][0], m_afAraTechCoords[0][1], m_afAraTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000))
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[3][0], m_afAraTechCoords[3][1], m_afAraTechCoords[3][2]);
+                }
+                else if (route == 1)
+                {
+                    for (uint8 i = 6; i < 9; i++)
+                        if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, m_afAraTechCoords[i][0], m_afAraTechCoords[i][1], m_afAraTechCoords[i][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                        {
+                            pAdd->SetWalk(false);
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[i + 3][0], m_afAraTechCoords[i + 3][1], m_afAraTechCoords[i + 3][2]);
+                        }
+                    if (!urand(0, 2)) // 1 in 3 chance to spawn a engineer
+                        if (pAdd = m_creature->SummonCreature(NPC_ARA_ENGI, m_afAraTechCoords[6][0], m_afAraTechCoords[6][1], m_afAraTechCoords[6][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000))
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[9][0], m_afAraTechCoords[9][1], m_afAraTechCoords[9][2]);
+                }
+                else
+                {
+                    for (uint8 i = 12; i < 15; i++)
+                        if ((pAdd = m_creature->SummonCreature(NPC_ARA_TECH, m_afAraTechCoords[i][0], m_afAraTechCoords[i][1], m_afAraTechCoords[i][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                        {
+                            pAdd->SetWalk(false);
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[i + 3][0], m_afAraTechCoords[i + 3][1], m_afAraTechCoords[i + 3][2]);
+                        }
+                    if (!urand(0, 2)) // 1 in 3 chance to spawn a engineer
+                        if (pAdd = m_creature->SummonCreature(NPC_ARA_ENGI, m_afAraTechCoords[12][0], m_afAraTechCoords[12][1], m_afAraTechCoords[12][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000))
+                            pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[15][0], m_afAraTechCoords[15][1], m_afAraTechCoords[15][2]);
                 }
                 m_uiWaveTimer = 15000;
                 break;
@@ -207,47 +515,184 @@ struct npc_manaforge_control_consoleAI : public ScriptedAI
         switch (pCreature->GetEntry())
         {
             case NPC_BNAAR_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2946.52f, 4201.42f, 163.47f, 3.54f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2927.49f, 4192.81f, 163.00f);
+                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afBanaarTechCoords[5][0], m_afBanaarTechCoords[5][1], m_afBanaarTechCoords[5][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    pAdd->SetWalk(false);
+                    pAdd->GetMotionMaster()->MovePoint(3, m_afBanaarTechCoords[6][0], m_afBanaarTechCoords[6][1], m_afBanaarTechCoords[6][2]);
+                }
                 break;
             case NPC_CORUU_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2453.88f, 2737.85f, 133.27f, 2.59f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2433.96f, 2751.53f, 133.85f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2441.62f, 2735.32f, 134.49f, 1.97f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2433.96f, 2751.53f, 133.85f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2450.73f, 2754.50f, 134.49f, 3.29f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2433.96f, 2751.53f, 133.85f);
+                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afCoruuTechCoords[0][0], m_afCoruuTechCoords[0][1], m_afCoruuTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    pAdd->SetWalk(false); // spawn one on left
+                    pAdd->GetMotionMaster()->MovePoint(0, m_afCoruuTechCoords[1][0], m_afCoruuTechCoords[1][1], m_afCoruuTechCoords[1][2]);
+                }
+                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afCoruuTechCoords[4][0], m_afCoruuTechCoords[4][1], m_afCoruuTechCoords[4][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    pAdd->SetWalk(false); // and one on right
+                    pAdd->GetMotionMaster()->MovePoint(0, m_afCoruuTechCoords[5][0], m_afCoruuTechCoords[5][1], m_afCoruuTechCoords[5][2]);
+                }
                 break;
             case NPC_DURO_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2956.18f, 2202.85f, 165.32f, 5.45f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2972.27f, 2193.22f, 164.48f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, 2975.30f, 2211.50f, 165.32f, 4.55f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2972.27f, 2193.22f, 164.48f);
-                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_PROT, 2965.02f, 2217.45f, 164.16f, 4.96f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 2972.27f, 2193.22f, 164.48f);
+                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afDuroTechCoords[0][0], m_afDuroTechCoords[0][1], m_afDuroTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    pAdd->SetWalk(false); // back move left
+                    pAdd->GetMotionMaster()->MovePoint(0, m_afDuroTechCoords[1][0], m_afDuroTechCoords[1][1], m_afDuroTechCoords[1][2]);
+                }
+                if ((pAdd = m_creature->SummonCreature(NPC_SUNFURY_TECH, m_afDuroTechCoords[0][0], m_afDuroTechCoords[0][1], m_afDuroTechCoords[0][2], 0.0f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    pAdd->SetWalk(false); // back move right
+                    pAdd->GetMotionMaster()->MovePoint(2, m_afDuroTechCoords[3][0], m_afDuroTechCoords[3][1], m_afDuroTechCoords[3][2]);
+                }
                 break;
             case NPC_ARA_C_CONSOLE:
-                if ((pAdd = m_creature->SummonCreature(NPC_ARA_ENGI, 3994.51f, 4020.46f, 192.18f, 0.91f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 4008.35f, 4035.04f, 192.70f);
-                if ((pAdd = m_creature->SummonCreature(NPC_ARA_GORKLONN, 4021.56f, 4059.35f, 193.59f, 4.44f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
-                    pAdd->GetMotionMaster()->MovePoint(0, 4016.62f, 4039.89f, 193.46f);
+                if ((pAdd = m_creature->SummonCreature(NPC_ARA_GORKLONN, m_afAraTechCoords[12][0], m_afAraTechCoords[12][1], m_afAraTechCoords[12][2], 4.44f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 120000)))
+                {
+                    Player* pPlayer;
+                    if (pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid))
+                        pAdd->AI()->AttackStart(pPlayer);
+                    else
+                        pAdd->GetMotionMaster()->MovePoint(0, m_afAraTechCoords[15][0], m_afAraTechCoords[15][1], m_afAraTechCoords[15][2]);
+                    DoScriptText(YEL_MANFORGE_SHUTDOWN, pAdd);
+                }
                 break;
         }
     }
 
+    void SummonedMovementInform(Creature* pSummoned, uint32 uiMotionType, uint32 uiData) override
+    {
+        switch (m_creature->GetEntry())
+        {
+            case NPC_BNAAR_C_CONSOLE:
+                if (pSummoned->GetEntry() == NPC_SUNFURY_TECH && uiMotionType == POINT_MOTION_TYPE && pSummoned->IsAlive())
+                    switch (uiData)
+                    {
+                        case 0:
+                            pSummoned->GetMotionMaster()->MovePoint(1, m_afBanaarTechCoords[2][0], m_afBanaarTechCoords[2][1], m_afBanaarTechCoords[2][2]);
+                            break;
+                        case 2:
+                            pSummoned->GetMotionMaster()->MovePoint(3, m_afBanaarTechCoords[4][0], m_afBanaarTechCoords[4][1], m_afBanaarTechCoords[4][2]);
+                            break;
+                        case 1:
+                        case 3:
+                            if (!m_bShutdownSaid)
+                            {
+                                if (urand(0, 1))
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_1, pSummoned);
+                                else
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_2, pSummoned);
+                                m_bShutdownSaid = true;
+                            }
+                            pSummoned->SetFacingToObject(m_creature);
+                            pSummoned->CastSpell(m_creature, SPELL_INTERRUPT_1, TRIGGERED_OLD_TRIGGERED);
+                            break;
+                    }
+                break;
+            case NPC_CORUU_C_CONSOLE:
+                if (pSummoned->GetEntry() == NPC_SUNFURY_TECH && uiMotionType == POINT_MOTION_TYPE && pSummoned->IsAlive())
+                    switch (uiData)
+                    {
+                        case 0:
+                            if (!m_bShutdownSaid)
+                            {
+                                if (urand(0, 1))
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_1, pSummoned);
+                                else
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_2, pSummoned);
+                                m_bShutdownSaid = true;
+                            }
+                            pSummoned->SetFacingToObject(m_creature);
+                            pSummoned->CastSpell(m_creature, SPELL_INTERRUPT_1, TRIGGERED_OLD_TRIGGERED);
+                            break;
+                    }
+                break;
+            case NPC_DURO_C_CONSOLE:
+                if (pSummoned->GetEntry() == NPC_SUNFURY_TECH && uiMotionType == POINT_MOTION_TYPE && pSummoned->IsAlive())
+                    switch (uiData)
+                    {
+                        case 0:
+                            pSummoned->GetMotionMaster()->MovePoint(1, m_afDuroTechCoords[2][0], m_afDuroTechCoords[2][1], m_afDuroTechCoords[2][2]);
+                            break;
+                        case 2:
+                            pSummoned->GetMotionMaster()->MovePoint(3, m_afDuroTechCoords[4][0], m_afDuroTechCoords[4][1], m_afDuroTechCoords[4][2]);
+                            break;
+                        case 1:
+                        case 3:
+                        case 4:
+                            if (!m_bShutdownSaid)
+                            {
+                                if (urand(0, 1))
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_1, pSummoned);
+                                else
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_2, pSummoned);
+                                m_bShutdownSaid = true;
+                            }
+                            pSummoned->SetFacingToObject(m_creature);
+                            pSummoned->CastSpell(m_creature, SPELL_INTERRUPT_1, TRIGGERED_OLD_TRIGGERED);
+                            break;
+                    }
+                break;
+            case NPC_ARA_C_CONSOLE:
+                if ((pSummoned->GetEntry() == NPC_ARA_TECH || pSummoned->GetEntry() == NPC_ARA_ENGI || pSummoned->GetEntry() == NPC_ARA_GORKLONN) && uiMotionType == POINT_MOTION_TYPE && pSummoned->IsAlive())
+                    switch (uiData)
+                    {
+                        case 0:
+                            pSummoned->GetMotionMaster()->MoveIdle();
+                            if (!m_bShutdownSaid)
+                            {
+                                if (urand(0, 1))
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_1, pSummoned);
+                                else
+                                    DoScriptText(SAY_MANFORGE_SHUTDOWN_2, pSummoned);
+                                m_bShutdownSaid = true;
+                            }
+                            pSummoned->SetFacingToObject(m_creature);
+                            pSummoned->CastSpell(m_creature, SPELL_INTERRUPT_2, TRIGGERED_OLD_TRIGGERED);
+                            break;
+                    }
+                break;
+        }
+    }
+
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
+    {
+        if (eventType == AI_EVENT_CUSTOM_A)
+            DoFailEvent();
+    }
+
+    void JustSummoned(Creature* pSummoned) override 
+    {
+        m_vSummonGuids.push_back(pSummoned->GetObjectGuid());
+
+        npc_manaforge_spawnAI* pSummonedAI = dynamic_cast<npc_manaforge_spawnAI*>(pSummoned->AI());
+        pSummonedAI->m_manaforgeGuid = m_creature->GetObjectGuid();
+    }
+
     void UpdateAI(const uint32 uiDiff) override
     {
+        if (m_uiHardResetTimer <= uiDiff)
+        {
+            m_uiWaveTimer = 0;
+            m_uiPhase = 1;
+            m_bWave = false;
+            m_bShutdownSaid = false;
+            // why are we here? event should have failed or completed by now...
+            sLog.outCustomLog("Manaforge invalid state, helper creature: %s (%u)", m_creature->GetName(), m_creature->GetEntry());
+            sLog.outCustomLog("uiWaveTimer: %u", m_uiWaveTimer);
+            sLog.outCustomLog("uiPhase: %u", m_uiPhase);
+            sLog.outCustomLog("bWave: %s", (m_bWave ? "true" : "false"));
+            ResetControlConsoleAndDespawn();
+        }
+        else
+            m_uiHardResetTimer -= uiDiff;
+
         if (m_uiEventTimer < uiDiff)
         {
             Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid);
 
             if (!pPlayer)
             {
-                // Reset Event
-                if (GameObject* pGo = m_creature->GetMap()->GetGameObject(m_consoleGuid))
-                    pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
-
-                m_creature->ForcedDespawn();
+                ResetControlConsoleAndDespawn();
                 return;
             }
 
@@ -278,13 +723,68 @@ struct npc_manaforge_control_consoleAI : public ScriptedAI
                     break;
                 case 5:
                     DoScriptText(EMOTE_COMPLETE, m_creature, pPlayer);
-                    pPlayer->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
                     DoCastSpellIfCan(m_creature, SPELL_DISABLE_VISUAL);
 
-                    if (GameObject* pGo = m_creature->GetMap()->GetGameObject(m_consoleGuid))
-                        pGo->RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+                    // Give credit for completion
+                    // Handle all players in group (if they took quest)
+                    if (Group* pGroup = pPlayer->GetGroup())
+                    {
+                        for (GroupReference* pRef = pGroup->GetFirstMember(); pRef != nullptr; pRef = pRef->next())
+                        {
+                            if (Player* pMember = pRef->getSource())
+                            {
+                                switch (m_creature->GetEntry())
+                                {
+                                    case NPC_BNAAR_C_CONSOLE:
+                                        if (pMember->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                            || pMember->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                            pMember->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                        break;
+                                    case NPC_CORUU_C_CONSOLE:
+                                        if (pMember->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                            || pMember->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                            pMember->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                        break;
+                                    case NPC_DURO_C_CONSOLE:
+                                        if (pMember->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                            || pMember->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                            pMember->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                        break;
+                                    case NPC_ARA_C_CONSOLE:
+                                        if (pMember->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                            || pMember->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                            pMember->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        switch (m_creature->GetEntry())
+                        {
+                            case NPC_BNAAR_C_CONSOLE:
+                                pPlayer->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                break;
+                            case NPC_CORUU_C_CONSOLE:
+                                if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pPlayer->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                break;
+                            case NPC_DURO_C_CONSOLE:
+                                if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pPlayer->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                break;
+                            case NPC_ARA_C_CONSOLE:
+                                if (pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE
+                                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                                    pPlayer->KilledMonsterCredit(m_creature->GetEntry(), m_creature->GetObjectGuid());
+                                break;
+                        }
+                    }
 
-                    ++m_uiPhase;
+                    ResetControlConsoleAndDespawn();
                     break;
             }
         }
@@ -302,7 +802,8 @@ struct npc_manaforge_control_consoleAI : public ScriptedAI
         }
     }
 };
-CreatureAI* GetAI_npc_manaforge_control_console(Creature* pCreature)
+
+UnitAI* GetAI_npc_manaforge_control_console(Creature* pCreature)
 {
     return new npc_manaforge_control_consoleAI(pCreature);
 }
@@ -311,8 +812,7 @@ CreatureAI* GetAI_npc_manaforge_control_console(Creature* pCreature)
 ## go_manaforge_control_console
 ######*/
 
-// TODO: clean up this workaround when mangos adds support to do it properly (with gossip selections instead of instant summon)
-bool GOUse_go_manaforge_control_console(Player* pPlayer, GameObject* pGo)
+bool GossipHello_go_manaforge(Player* pPlayer, GameObject* pGo)
 {
     if (pGo->GetGoType() == GAMEOBJECT_TYPE_QUESTGIVER)
     {
@@ -320,46 +820,145 @@ bool GOUse_go_manaforge_control_console(Player* pPlayer, GameObject* pGo)
         pPlayer->SendPreparedQuest(pGo->GetObjectGuid());
     }
 
-    Creature* pManaforge = nullptr;
-
     switch (pGo->GetAreaId())
     {
         case 3726:                                          // b'naar
             if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_ALDOR) == QUEST_STATUS_INCOMPLETE
-                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_SCRYERS) == QUEST_STATUS_INCOMPLETE)
-                    && pPlayer->HasItemCount(ITEM_BNAAR_ACESS_CRYSTAL, 1))
-                pManaforge = pPlayer->SummonCreature(NPC_BNAAR_C_CONSOLE, 2918.95f, 4189.98f, 161.88f, 0.34f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 125000);
+                || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                && pPlayer->HasItemCount(ITEM_BNAAR_ACESS_CRYSTAL, 1))
+            {
+                pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SHUTDOWN, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE, pGo->GetObjectGuid());
+            }
+            else
+            {
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE_NOQUEST, pGo->GetObjectGuid());
+            }
             break;
         case 3730:                                          // coruu
             if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE
-                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
-                    && pPlayer->HasItemCount(ITEM_CORUU_ACESS_CRYSTAL, 1))
-                pManaforge = pPlayer->SummonCreature(NPC_CORUU_C_CONSOLE, 2426.77f, 2750.38f, 133.24f, 2.14f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 125000);
+                || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                && pPlayer->HasItemCount(ITEM_CORUU_ACESS_CRYSTAL, 1))
+            {
+                pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SHUTDOWN, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE, pGo->GetObjectGuid());
+            }
+            else
+            {
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE_NOQUEST, pGo->GetObjectGuid());
+            }
             break;
         case 3734:                                          // duro
             if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE
-                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
-                    && pPlayer->HasItemCount(ITEM_DURO_ACESS_CRYSTAL, 1))
-                pManaforge = pPlayer->SummonCreature(NPC_DURO_C_CONSOLE, 2976.48f, 2183.29f, 163.20f, 1.85f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 125000);
+                || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                && pPlayer->HasItemCount(ITEM_DURO_ACESS_CRYSTAL, 1))
+            {
+                pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SHUTDOWN, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE, pGo->GetObjectGuid());
+            }
+            else
+            {
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE_NOQUEST, pGo->GetObjectGuid());
+            }
             break;
         case 3722:                                          // ara
             if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE
-                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
-                    && pPlayer->HasItemCount(ITEM_ARA_ACESS_CRYSTAL, 1))
-                pManaforge = pPlayer->SummonCreature(NPC_ARA_C_CONSOLE, 4013.71f, 4028.76f, 192.10f, 1.25f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 125000);
+                || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                && pPlayer->HasItemCount(ITEM_ARA_ACESS_CRYSTAL, 1))
+            {
+                pPlayer->ADD_GOSSIP_ITEM(GOSSIP_ICON_CHAT, GOSSIP_ITEM_SHUTDOWN, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE, pGo->GetObjectGuid());
+            }
+            else
+            {
+                pPlayer->SEND_GOSSIP_MENU(GOSSIP_TEXT_CONSOLE_NOQUEST, pGo->GetObjectGuid());
+            }
             break;
     }
 
-    if (pManaforge)
+
+    return true;
+}
+
+bool GossipSelect_go_manaforge(Player* pPlayer, GameObject* pGo, uint32 /*uiSender*/, uint32 uiAction)
+{
+    if (uiAction == GOSSIP_ACTION_INFO_DEF + 1)
     {
-        if (npc_manaforge_control_consoleAI* pManaforgeAI = dynamic_cast<npc_manaforge_control_consoleAI*>(pManaforge->AI()))
+        Creature* pManaforge = nullptr;
+
+        switch (pGo->GetAreaId())
         {
-            pManaforgeAI->m_playerGuid = pPlayer->GetObjectGuid();
-            pManaforgeAI->m_consoleGuid = pGo->GetObjectGuid();
+            case 3726:                                          // b'naar
+                if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_ALDOR) == QUEST_STATUS_INCOMPLETE
+                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_BNAAR_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                    && pPlayer->HasItemCount(ITEM_BNAAR_ACESS_CRYSTAL, 1))
+                    pManaforge = pPlayer->SummonCreature(NPC_BNAAR_C_CONSOLE, 2918.95f, 4189.98f, 164.5f, 0.34f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 5 * MINUTE * IN_MILLISECONDS, true);
+                break;
+            case 3730:                                          // coruu
+                if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_ALDOR) == QUEST_STATUS_INCOMPLETE
+                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_CORUU_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                    && pPlayer->HasItemCount(ITEM_CORUU_ACESS_CRYSTAL, 1))
+                    pManaforge = pPlayer->SummonCreature(NPC_CORUU_C_CONSOLE, 2423.36f, 2755.72f, 135.5f, 2.14f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 5 * MINUTE * IN_MILLISECONDS, true);
+                break;
+            case 3734:                                          // duro
+                if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_ALDOR) == QUEST_STATUS_INCOMPLETE
+                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_DURO_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                    && pPlayer->HasItemCount(ITEM_DURO_ACESS_CRYSTAL, 1))
+                    pManaforge = pPlayer->SummonCreature(NPC_DURO_C_CONSOLE, 2976.48f, 2183.29f, 166.00f, 1.85f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 5 * MINUTE * IN_MILLISECONDS, true);
+                break;
+            case 3722:                                          // ara
+                if ((pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_ALDOR) == QUEST_STATUS_INCOMPLETE
+                    || pPlayer->GetQuestStatus(QUEST_SHUTDOWN_ARA_SCRYERS) == QUEST_STATUS_INCOMPLETE)
+                    && pPlayer->HasItemCount(ITEM_ARA_ACESS_CRYSTAL, 1))
+                    pManaforge = pPlayer->SummonCreature(NPC_ARA_C_CONSOLE, 4013.71f, 4028.76f, 195.00f, 1.25f, TEMPSPAWN_TIMED_OOC_OR_CORPSE_DESPAWN, 5 * MINUTE * IN_MILLISECONDS, true);
+                break;
         }
 
-        pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+        if (pManaforge)
+        {
+            if (npc_manaforge_control_consoleAI* pManaforgeAI = dynamic_cast<npc_manaforge_control_consoleAI*>(pManaforge->AI()))
+            {
+                pManaforgeAI->m_playerGuid = pPlayer->GetObjectGuid();
+                pManaforgeAI->m_consoleGuid = pGo->GetObjectGuid();
+
+                std::list<Creature*> lNearbyWarpMaster; // If these are in the switch, causes error
+                std::list<Creature*> lNearbyWarpEngineers;
+                std::list<Creature*> lNearbyResearchers;
+
+                // Agro nearby npcs
+                switch (pGo->GetAreaId())
+                {
+                    case 3726:                                          // b'naar
+                        GetCreatureListWithEntryInGrid(lNearbyWarpMaster, pManaforge, NPC_SUNFURY_WARP_MASTER, 15.0f);
+                        GetCreatureListWithEntryInGrid(lNearbyWarpEngineers, pManaforge, NPC_SUNFURY_WARP_ENGINEER, 15.0f);
+
+                        for (std::list<Creature*>::iterator itr = lNearbyWarpMaster.begin(); itr != lNearbyWarpMaster.end(); ++itr)
+                            (*itr)->AI()->AttackStart(pPlayer);
+                        for (std::list<Creature*>::iterator itr = lNearbyWarpEngineers.begin(); itr != lNearbyWarpEngineers.end(); ++itr)
+                            (*itr)->AI()->AttackStart(pPlayer);
+
+                        break;
+                    case 3730:                                          // coruu
+                        GetCreatureListWithEntryInGrid(lNearbyResearchers, pManaforge, NPC_SUNFURY_RESEARCHER, 15.0f);
+
+                        for (std::list<Creature*>::iterator itr = lNearbyResearchers.begin(); itr != lNearbyResearchers.end(); ++itr)
+                            (*itr)->AI()->AttackStart(pPlayer);
+                        break;
+                    case 3734:                                          // duro
+                        break;
+                    case 3722:                                          // ara
+
+                        break;
+                }
+
+            }
+
+            pGo->SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+        }
+
+        pPlayer->CLOSE_GOSSIP_MENU();
     }
+
     return true;
 }
 
@@ -595,7 +1194,7 @@ struct npc_commander_dawnforgeAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_commander_dawnforge(Creature* pCreature)
+UnitAI* GetAI_npc_commander_dawnforge(Creature* pCreature)
 {
     return new npc_commander_dawnforgeAI(pCreature);
 }
@@ -606,7 +1205,7 @@ bool AreaTrigger_at_commander_dawnforge(Player* pPlayer, AreaTriggerEntry const*
     if (!pPlayer->HasAura(SPELL_SUNFURY_DISGUISE, EFFECT_INDEX_0))
         return false;
 
-    if (pPlayer->isAlive() && pPlayer->GetQuestStatus(QUEST_INFO_GATHERING) == QUEST_STATUS_INCOMPLETE)
+    if (pPlayer->IsAlive() && pPlayer->GetQuestStatus(QUEST_INFO_GATHERING) == QUEST_STATUS_INCOMPLETE)
     {
         Creature* pDawnforge = GetClosestCreatureWithEntry(pPlayer, NPC_COMMANDER_DAWNFORGE, 30.0f);
 
@@ -632,7 +1231,11 @@ enum
 
     NPC_THADELL          = 20464,
     NPC_TORMENTED_SOUL   = 20512,
-    NPC_SEVERED_SPIRIT   = 19881
+    NPC_SEVERED_SPIRIT   = 19881,
+
+    SAY_ESCORT_1         = -1015100,
+    SAY_ESCORT_2         = -1015101,
+    SAY_THADELL          = -1015102
 };
 
 struct npc_bessyAI : public npc_escortAI
@@ -643,43 +1246,46 @@ struct npc_bessyAI : public npc_escortAI
     {
         switch (uiPointId)
         {
-            case 3:
-                m_creature->SummonCreature(NPC_TORMENTED_SOUL, 2449.67f, 2183.11f, 96.85f, 6.20f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000);
-                m_creature->SummonCreature(NPC_TORMENTED_SOUL, 2449.53f, 2184.43f, 96.36f, 6.27f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000);
-                m_creature->SummonCreature(NPC_TORMENTED_SOUL, 2449.85f, 2186.34f, 97.57f, 6.08f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000);
+            case 4:
+                DoScriptText(SAY_ESCORT_2, m_creature);
+                if (Creature* pSpirit = m_creature->SummonCreature(NPC_SEVERED_SPIRIT, 2438.142f, 2200.449f, 101.5952f, 4.63704f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000, false, true))
+                    pSpirit->GetMotionMaster()->MoveWaypoint(1);
                 break;
-            case 7:
-                m_creature->SummonCreature(NPC_SEVERED_SPIRIT, 2309.64f, 2186.24f, 92.25f, 6.06f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000);
-                m_creature->SummonCreature(NPC_SEVERED_SPIRIT, 2309.25f, 2183.46f, 91.75f, 6.22f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000);
+            case 8:
+                if (Creature* pSpirit = m_creature->SummonCreature(NPC_SEVERED_SPIRIT, 2279.846f, 2188.402f, 91.61183f, 6.22683f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 25000, false, true))
+                    pSpirit->GetMotionMaster()->MoveWaypoint(2);
                 break;
-            case 12:
+            case 13:
+                if (Creature* pThadell = GetClosestCreatureWithEntry(m_creature, NPC_THADELL, 20.0f))
+                    DoScriptText(SAY_THADELL, pThadell);
+
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_COWS_COME_HOME, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_COWS_COME_HOME, m_creature);
                 break;
         }
     }
 
-    void JustSummoned(Creature* pSummoned) override
+    void Reset() override
     {
-        pSummoned->AI()->AttackStart(m_creature);
+        m_creature->SetWalk(true);
     }
-
-    void Reset() override {}
 };
 
 bool QuestAccept_npc_bessy(Player* pPlayer, Creature* pCreature, const Quest* pQuest)
 {
     if (pQuest->GetQuestId() == QUEST_COWS_COME_HOME)
     {
-        pCreature->SetFactionTemporary(FACTION_ESCORT_N_NEUTRAL_PASSIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_NON_ATTACKABLE);
+        pCreature->SetFactionTemporary(FACTION_ESCORT_N_NEUTRAL_ACTIVE, TEMPFACTION_RESTORE_RESPAWN | TEMPFACTION_TOGGLE_NON_ATTACKABLE);
+
+        DoScriptText(SAY_ESCORT_1, pCreature);
 
         if (npc_bessyAI* pBessyAI = dynamic_cast<npc_bessyAI*>(pCreature->AI()))
-            pBessyAI->Start(true, pPlayer, pQuest);
+            pBessyAI->Start(false, pPlayer, pQuest);
     }
     return true;
 }
 
-CreatureAI* GetAI_npc_bessy(Creature* pCreature)
+UnitAI* GetAI_npc_bessy(Creature* pCreature)
 {
     return new npc_bessyAI(pCreature);
 }
@@ -750,7 +1356,7 @@ struct npc_maxx_a_million_escortAI : public npc_escortAI
                 break;
             case 36:
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_MARK_V_IS_ALIVE, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_MARK_V_IS_ALIVE, m_creature);
 
                 if (Creature* pAlley = m_creature->GetMap()->GetCreature(m_alleyGuid))
                     DoScriptText(SAY_ALLEY_FINISH, pAlley);
@@ -773,7 +1379,7 @@ struct npc_maxx_a_million_escortAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() ||  !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() ||  !m_creature->GetVictim())
         {
             if (m_uiSubEventTimer)
             {
@@ -817,7 +1423,7 @@ struct npc_maxx_a_million_escortAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_maxx_a_million(Creature* pCreature)
+UnitAI* GetAI_npc_maxx_a_million(Creature* pCreature)
 {
     return new npc_maxx_a_million_escortAI(pCreature);
 }
@@ -854,7 +1460,10 @@ struct npc_zeppitAI : public ScriptedPetAI
 {
     npc_zeppitAI(Creature* pCreature) : ScriptedPetAI(pCreature) { Reset(); }
 
-    void Reset() override { }
+    void Reset() override
+    {
+        SetReactState(REACT_PASSIVE);
+    }
 
     void OwnerKilledUnit(Unit* pVictim) override
     {
@@ -870,7 +1479,7 @@ struct npc_zeppitAI : public ScriptedPetAI
     }
 };
 
-CreatureAI* GetAI_npc_zeppit(Creature* pCreature)
+UnitAI* GetAI_npc_zeppit(Creature* pCreature)
 {
     return new npc_zeppitAI(pCreature);
 }
@@ -892,13 +1501,15 @@ enum
     SAY_FINISH_1                    = -1000899,
     SAY_FINISH_2                    = -1000900,
 
-    SPELL_ETHEREAL_TELEPORT         = 34427,
+    SPELL_SPAWN                     = 12980,
+
+    // SPELL_ETHEREAL_TELEPORT         = 34427,
     SPELL_PROTECTORATE              = 35679,                // dummy aura applied on player
 
     NPC_NEXUS_STALKER               = 20474,
     NPC_ARCHON                      = 20458,
 
-    FACTION_FRIENDLY                = 35,
+    FACTION_ESCORT                  = 1795,
 
     QUEST_ID_DELIVERING_MESSAGE     = 10406,
 };
@@ -910,12 +1521,15 @@ struct npc_protectorate_demolitionistAI : public npc_escortAI
     uint32 m_uiEventTimer;
     uint8 m_uiEventStage;
 
+    bool m_spawnAnim;
+
     void Reset() override
     {
         if (!HasEscortState(STATE_ESCORT_ESCORTING))
         {
             m_uiEventTimer = 0;
             m_uiEventStage = 0;
+            m_spawnAnim = false;
         }
     }
 
@@ -939,7 +1553,7 @@ struct npc_protectorate_demolitionistAI : public npc_escortAI
             {
                 if (m_creature->IsWithinDistInMap(pWho, 10.0f))
                 {
-                    m_creature->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_RESTORE_RESPAWN);
+                    m_creature->SetFactionTemporary(FACTION_ESCORT, TEMPFACTION_RESTORE_RESPAWN);
                     Start(false, (Player*)pWho);
                 }
             }
@@ -960,29 +1574,29 @@ struct npc_protectorate_demolitionistAI : public npc_escortAI
     {
         switch (uiPointId)
         {
-            case 0:
+            case 1:
                 DoScriptText(SAY_INTRO, m_creature);
                 break;
-            case 3:
+            case 4:
                 DoScriptText(SAY_STAGING_GROUNDS, m_creature);
                 break;
-            case 4:
+            case 5:
                 DoScriptText(SAY_TOXIC_HORROR, m_creature);
                 break;
-            case 9:
+            case 10:
                 DoScriptText(SAY_SALHADAAR, m_creature);
                 break;
-            case 12:
+            case 13:
                 DoScriptText(SAY_DISRUPTOR, m_creature);
                 SetEscortPaused(true);
                 m_uiEventTimer = 5000;
                 break;
-            case 13:
+            case 14:
                 DoScriptText(SAY_FINISH_2, m_creature);
                 if (Player* pPlayer = GetPlayerForEscort())
                 {
                     m_creature->SetFacingToObject(pPlayer);
-                    pPlayer->GroupEventHappens(QUEST_ID_DELIVERING_MESSAGE, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_DELIVERING_MESSAGE, m_creature);
                 }
                 SetEscortPaused(true);
                 m_uiEventTimer = 6000;
@@ -992,6 +1606,12 @@ struct npc_protectorate_demolitionistAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
+        if (!m_spawnAnim)
+        {
+            DoCastSpellIfCan(nullptr, SPELL_SPAWN);
+            m_spawnAnim = true;
+        }
+
         if (m_uiEventTimer)
         {
             if (m_uiEventTimer <= uiDiff)
@@ -1029,7 +1649,7 @@ struct npc_protectorate_demolitionistAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_protectorate_demolitionist(Creature* pCreature)
+UnitAI* GetAI_npc_protectorate_demolitionist(Creature* pCreature)
 {
     return new npc_protectorate_demolitionistAI(pCreature);
 }
@@ -1050,6 +1670,8 @@ enum
 
     NPC_COMMANDER_AMEER             = 20448,
 
+    NPC_ETHEREUM_GLADIATOR          = 20854,
+
     QUEST_ID_ESCAPE_STAGING_GROUNDS = 10425,
 };
 
@@ -1059,6 +1681,7 @@ struct npc_captured_vanguardAI : public npc_escortAI
 
     uint32 m_uiGlaiveTimer;
     uint32 m_uiHamstringTimer;
+    bool m_bOfferQuest;
 
     void Reset() override
     {
@@ -1066,29 +1689,47 @@ struct npc_captured_vanguardAI : public npc_escortAI
         m_uiHamstringTimer = urand(8000, 13000);
     }
 
+    void JustRespawned() override
+    {
+        m_bOfferQuest = true;
+        m_creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
+    }
+
+    void JustDied(Unit* killer) override
+    {
+        npc_escortAI::JustDied(killer);
+        if (Creature* gladiator = GetClosestCreatureWithEntry(m_creature, NPC_ETHEREUM_GLADIATOR, 50.f, true))
+            gladiator->ForcedDespawn();
+    }
+
     void JustReachedHome() override
     {
         // Happens only if the player helps the npc in the fight - otherwise he dies
-        DoScriptText(SAY_VANGUARD_INTRO, m_creature);
+        if (m_bOfferQuest)
+        {
+            DoScriptText(SAY_VANGUARD_INTRO, m_creature);
+            m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
+            m_bOfferQuest = false;
+        }
     }
 
     void WaypointReached(uint32 uiPointId) override
     {
         switch (uiPointId)
         {
-            case 15:
-                if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_ID_ESCAPE_STAGING_GROUNDS, m_creature);
-                break;
             case 16:
+                if (Player* pPlayer = GetPlayerForEscort())
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_ESCAPE_STAGING_GROUNDS, m_creature);
+                break;
+            case 17:
                 DoScriptText(SAY_VANGUARD_FINISH, m_creature);
                 SetRun();
                 break;
-            case 17:
+            case 18:
                 if (Creature* pAmeer = GetClosestCreatureWithEntry(m_creature, NPC_COMMANDER_AMEER, 5.0f))
                     DoScriptText(EMOTE_VANGUARD_FINISH, m_creature, pAmeer);
                 break;
-            case 18:
+            case 19:
                 if (DoCastSpellIfCan(m_creature, SPELL_ETHEREAL_TELEPORT, CAST_TRIGGERED) == CAST_OK)
                     m_creature->ForcedDespawn(1000);
                 break;
@@ -1097,12 +1738,12 @@ struct npc_captured_vanguardAI : public npc_escortAI
 
     void UpdateEscortAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (m_uiGlaiveTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_GLAIVE) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_GLAIVE) == CAST_OK)
                 m_uiGlaiveTimer = urand(5000, 9000);
         }
         else
@@ -1110,7 +1751,7 @@ struct npc_captured_vanguardAI : public npc_escortAI
 
         if (m_uiHamstringTimer < uiDiff)
         {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_HAMSTRING) == CAST_OK)
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HAMSTRING) == CAST_OK)
                 m_uiHamstringTimer = urand(10000, 16000);
         }
         else
@@ -1120,7 +1761,7 @@ struct npc_captured_vanguardAI : public npc_escortAI
     }
 };
 
-CreatureAI* GetAI_npc_captured_vanguard(Creature* pCreature)
+UnitAI* GetAI_npc_captured_vanguard(Creature* pCreature)
 {
     return new npc_captured_vanguardAI(pCreature);
 }
@@ -1161,8 +1802,8 @@ enum
     NPC_LEGION_TROOPER      = 20402,
     NPC_LEGION_DESTROYER    = 20403,
 
-    GO_ROCKET_SMOKE         = 183988,
-    GO_ROCKET_FIRE          = 183987,
+    // GO_ROCKET_SMOKE         = 183988,
+    // GO_ROCKET_FIRE          = 183987,
 
     QUEST_ID_WARP_GATE      = 10310,
 
@@ -1208,7 +1849,7 @@ struct npc_drijyaAI : public npc_escortAI
         }
     }
 
-    void AttackedBy(Unit* pWho) override
+    void AttackedBy(Unit* /*pWho*/) override
     {
         if (!m_uiSayCount)
         {
@@ -1265,17 +1906,17 @@ struct npc_drijyaAI : public npc_escortAI
     {
         switch (uiPointId)
         {
-            case 0:
+            case 1:
                 DoScriptText(SAY_DRIJYA_START, m_creature);
                 SetRun();
                 break;
-            case 1:
+            case 2:
                 DoScriptText(SAY_DRIJYA_1, m_creature);
                 break;
-            case 5:
+            case 6:
                 DoScriptText(SAY_DRIJYA_2, m_creature);
                 break;
-            case 7:
+            case 8:
                 SetEscortPaused(true);
                 m_uiSayCount = false;
                 m_uiDestroyingTimer = 60000;
@@ -1285,7 +1926,7 @@ struct npc_drijyaAI : public npc_escortAI
                 if (Creature* pTrigger = GetClosestCreatureWithEntry(m_creature, NPC_EXPLODE_TRIGGER, 40.0f))
                     m_explodeTriggerGuid = pTrigger->GetObjectGuid();
                 break;
-            case 8:
+            case 9:
                 if (Player* pPlayer = GetPlayerForEscort())
                     m_creature->SetFacingToObject(pPlayer);
                 // first pillar smoke
@@ -1293,7 +1934,7 @@ struct npc_drijyaAI : public npc_escortAI
                 DoScriptText(SAY_DRIJYA_4, m_creature);
                 m_creature->HandleEmote(EMOTE_ONESHOT_NONE);
                 break;
-            case 12:
+            case 13:
                 SetEscortPaused(true);
                 m_uiSayCount = false;
                 m_uiDestroyingTimer = 60000;
@@ -1301,7 +1942,7 @@ struct npc_drijyaAI : public npc_escortAI
                 m_uiSpawnCount = 0;
                 m_creature->HandleEmote(EMOTE_STATE_WORK);
                 break;
-            case 13:
+            case 14:
                 if (Player* pPlayer = GetPlayerForEscort())
                     m_creature->SetFacingToObject(pPlayer);
                 // second pillar smoke
@@ -1309,45 +1950,45 @@ struct npc_drijyaAI : public npc_escortAI
                 DoScriptText(SAY_DRIJYA_5, m_creature);
                 m_creature->HandleEmote(EMOTE_ONESHOT_NONE);
                 break;
-            case 17:
+            case 18:
                 SetEscortPaused(true);
                 m_uiSayCount = false;
                 m_uiDestroyingTimer = 60000;
                 m_uiSpawnDestroyerTimer = 15000;
                 m_creature->HandleEmote(EMOTE_STATE_WORK);
                 break;
-            case 18:
+            case 19:
                 m_creature->HandleEmote(EMOTE_ONESHOT_NONE);
                 // manifold smoke
                 RespawnGo(true, 2, 4);
                 DoScriptText(SAY_DRIJYA_6, m_creature);
                 m_creature->HandleEmote(EMOTE_ONESHOT_ROAR);
                 break;
-            case 19:
+            case 20:
                 // warp gate explosion, smoke and fire
                 if (Creature* pTrigger = m_creature->GetMap()->GetCreature(m_explodeTriggerGuid))
                     pTrigger->CastSpell(pTrigger, SPELL_EXPLOSION_VISUAL, TRIGGERED_NONE);
                 RespawnGo(false, 0, 4);
                 RespawnGo(true, 5, 10);
                 break;
-            case 20:
+            case 21:
                 DoScriptText(SAY_DRIJYA_7, m_creature);
                 break;
-            case 23:
+            case 24:
                 SetRun(false);
                 break;
-            case 27:
+            case 28:
                 if (Player* pPlayer = GetPlayerForEscort())
                 {
                     DoScriptText(SAY_DRIJYA_COMPLETE, m_creature, pPlayer);
-                    pPlayer->GroupEventHappens(QUEST_ID_WARP_GATE, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ID_WARP_GATE, m_creature);
                 }
                 m_creature->ClearTemporaryFaction();
                 break;
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* pInvoker, uint32 uiMiscValue) override
     {
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
         {
@@ -1412,12 +2053,12 @@ struct npc_drijyaAI : public npc_escortAI
                 m_uiDestroyingTimer -= uiDiff;
         }
 
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
     }
 };
 
-CreatureAI* GetAI_npc_drijya(Creature* pCreature)
+UnitAI* GetAI_npc_drijya(Creature* pCreature)
 {
     return new npc_drijyaAI(pCreature);
 }
@@ -1430,6 +2071,251 @@ bool QuestAccept_npc_drijya(Player* pPlayer, Creature* pCreature, const Quest* p
         return true;
     }
 
+    return false;
+}
+
+/*######
+## npc_saeed
+######*/
+
+enum
+{
+    QUEST_DIMENSIUS_ALL_DEVOURING   = 10439,
+
+    NPC_PROTECTORATE_DEFENDER       = 20984,
+    NPC_PROTECTORATE_REGENERATOR    = 21783,
+    NPC_PROTECTORATE_AVENGER        = 21805,
+    NPC_DIMENSIUS                   = 19554,
+
+    FACTION_PROTECTORATE_ESCORT     = 1807,
+
+    SAY_SAEED_START                 = -1015033,
+    SAY_SAEED_PREPARE               = -1015034,
+    SAY_SAEED_ATTACK                = -1015035,
+    EMOTE_DIMENSIUS_LAUGH           = -1015036,
+    SAY_SAEED_TAUNT                 = -1015037,
+    SAY_AVENGER_QUEST_COMPLETE      = -1015038,
+
+    SPELL_SAEED_CLEAVE              = 15496,
+    SPELL_TELEPORT                  = 35517,
+};
+
+struct npc_saeed_escortAI : public npc_escortAI
+{
+    npc_saeed_escortAI(Creature* pCreature) : npc_escortAI(pCreature) { Reset(); }
+
+    uint8 m_uiEvent;
+    uint32 m_uiEventTimer;
+    uint32 m_uiCleaveTimer;
+    std::list<Creature*> m_lProtectorateAllyList;
+
+    void Reset() override
+    {
+        if (!HasEscortState(STATE_ESCORT_ESCORTING))
+        {
+            m_uiEvent = 0;
+            m_uiEventTimer = 0;
+            m_lProtectorateAllyList.clear();
+        }
+
+        m_uiCleaveTimer = urand(4000, 7000);
+    }
+
+    void WaypointReached(uint32 uiPoint) override
+    {
+        switch (uiPoint)
+        {
+            case 36:
+                SetEscortPaused(true);
+                if (Player* player = GetPlayerForEscort())
+                {
+                    m_creature->SetFacingToObject(player);
+                    DoScriptText(SAY_SAEED_PREPARE, m_creature, player);
+                }
+                m_creature->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+                m_creature->HandleEmoteState(EMOTE_STATE_READYUNARMED);
+                for (auto& ally : m_lProtectorateAllyList)
+                    ally->HandleEmoteState(EMOTE_STATE_READYUNARMED);
+
+                break;
+            case 41:
+                SetEscortPaused(true);
+                m_uiEventTimer = 4000;
+                m_uiEvent = 4;
+                break;
+        }
+    }
+
+    void UpdateAI(const uint32 uiDiff) override
+    {
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+        {
+            if (m_uiEventTimer)
+            {
+                if (m_uiEventTimer <= uiDiff)
+                {
+                    switch (m_uiEvent)
+                    {
+                        // shortly following escort initiation
+                        case 1:
+                            m_creature->HandleEmote(EMOTE_ONESHOT_ROAR);
+                            for (auto& ally : m_lProtectorateAllyList)
+                                ally->HandleEmote(EMOTE_ONESHOT_ROAR);
+
+                            m_uiEventTimer = 7000;
+                            m_uiEvent = 2;
+                            break;
+                        // start up waypoints
+                        case 2:
+                            SetEscortPaused(false);
+
+                            m_uiEventTimer = 0;
+                            m_uiEvent = 0;
+                            break;
+                        // after talking to Saeed again midway through the escort
+                        case 3:
+                            m_creature->HandleEmote(EMOTE_ONESHOT_ROAR);
+                            DoScriptText(SAY_SAEED_ATTACK, m_creature);
+                            for (auto& ally : m_lProtectorateAllyList)
+                            {
+                                ally->HandleEmoteState(EMOTE_STATE_NONE);
+                                ally->HandleEmote(EMOTE_ONESHOT_ROAR);
+                            }
+
+                            m_uiEventTimer = 3000;
+                            m_uiEvent = 2;
+                            break;
+                        // pre-fight event 1
+                        case 4:
+                            DoScriptText(SAY_SAEED_TAUNT, m_creature);
+                            m_creature->HandleEmoteState(EMOTE_STATE_READYUNARMED);
+                            for (auto& ally : m_lProtectorateAllyList)
+                                ally->HandleEmoteState(EMOTE_STATE_READYUNARMED);
+
+                            m_uiEventTimer = 2000;
+                            m_uiEvent = 5;
+                            break;
+                        // pre-fight event 2
+                        case 5:
+                            if (Creature* dimensius = GetClosestCreatureWithEntry(m_creature, NPC_DIMENSIUS, 40.0f))
+                            {
+                                DoScriptText(EMOTE_DIMENSIUS_LAUGH, dimensius, m_creature);
+                                dimensius->SetDisplayId(dimensius->GetNativeDisplayId());
+                                dimensius->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+                            }
+
+                            m_uiEventTimer = 3000;
+                            m_uiEvent = 6;
+                            break;
+                        // pre-fight event 3
+                        case 6:
+                            if (Creature* dimensius = GetClosestCreatureWithEntry(m_creature, NPC_DIMENSIUS, 40.0f))
+                            {
+                                dimensius->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_IMMUNE_TO_PLAYER);
+                                dimensius->AI()->AttackStart(m_creature);
+                                m_creature->AI()->AttackStart(dimensius);
+                            }
+
+                            m_uiEventTimer = 0;
+                            m_uiEvent = 0;
+                            break;
+                        // post-fight event 1
+                        case 7:
+                            if (Creature* avenger = GetClosestCreatureWithEntry(m_creature, NPC_PROTECTORATE_AVENGER, 40.0f))
+                            {
+                                if (Player* player = GetPlayerForEscort())
+                                    DoScriptText(SAY_AVENGER_QUEST_COMPLETE, avenger, player);
+                            }
+                            m_uiEventTimer = 4000;
+                            m_uiEvent = 8;
+                            break;
+                        // post-fight event 2
+                        case 8:
+                            for (auto& ally : m_lProtectorateAllyList)
+                                ally->CastSpell(ally, SPELL_TELEPORT, TRIGGERED_NONE);
+
+                            DoCastSpellIfCan(m_creature, SPELL_TELEPORT);
+                            m_uiEventTimer = 0;
+                            m_uiEvent = 0;
+                            break;
+                        default:
+                            m_uiEventTimer = 0;
+                            break;
+                    }
+                }
+                else
+                    m_uiEventTimer -= uiDiff;
+            }
+        }
+        else
+        {
+            if (m_uiCleaveTimer < uiDiff)
+            {
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SAEED_CLEAVE);
+                m_uiCleaveTimer = urand(7000, 11000);
+            }
+            else
+                m_uiCleaveTimer -= uiDiff;
+
+            DoMeleeAttackIfReady();
+        }
+    }
+};
+
+UnitAI* GetAI_npc_saeed(Creature* pCreature)
+{
+    return new npc_saeed_escortAI(pCreature);
+}
+
+bool GossipSelect_npc_saeed(Player* player, Creature* creature, uint32 /*sender*/, uint32 action)
+{
+    if (npc_saeed_escortAI* ai = dynamic_cast<npc_saeed_escortAI*>(creature->AI()))
+    {
+        // begin escort
+        if (action == 100)
+        {
+            creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+            DoScriptText(SAY_SAEED_START, creature, player);
+            creature->SetFactionTemporary(FACTION_PROTECTORATE_ESCORT, TEMPFACTION_RESTORE_RESPAWN);
+            if (Group* group = player->GetGroup())
+            {
+                for (GroupReference* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
+                    if (Player* member = ref->getSource())
+                        if (member->GetQuestStatus(QUEST_DIMENSIUS_ALL_DEVOURING) == QUEST_STATUS_INCOMPLETE)
+                            member->KilledMonsterCredit(creature->GetEntry(), creature->GetObjectGuid());
+            }
+            else if (player->GetQuestStatus(QUEST_DIMENSIUS_ALL_DEVOURING) == QUEST_STATUS_INCOMPLETE)
+            {
+                player->KilledMonsterCredit(creature->GetEntry(), creature->GetObjectGuid());
+            }
+
+            ai->Start(true, player, GetQuestTemplateStore(QUEST_DIMENSIUS_ALL_DEVOURING));
+            ai->SetEscortPaused(true);
+
+            ai->m_uiEventTimer = 3000;
+            ai->m_uiEvent = 1;
+            ai->m_lProtectorateAllyList.clear();
+            GetCreatureListWithEntryInGrid(ai->m_lProtectorateAllyList, creature, NPC_PROTECTORATE_AVENGER, 30.0f);
+            GetCreatureListWithEntryInGrid(ai->m_lProtectorateAllyList, creature, NPC_PROTECTORATE_DEFENDER, 30.0f);
+            GetCreatureListWithEntryInGrid(ai->m_lProtectorateAllyList, creature, NPC_PROTECTORATE_REGENERATOR, 30.0f);
+            for (auto& ally : ai->m_lProtectorateAllyList)
+                ally->SetFactionTemporary(FACTION_PROTECTORATE_ESCORT, TEMPFACTION_RESTORE_RESPAWN);
+
+            player->CLOSE_GOSSIP_MENU();
+            return true;
+        }
+
+        // start sequence with Dimensius
+        else if (action == 101)
+        {
+            creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+            ai->m_uiEventTimer = 2000;
+            ai->m_uiEvent = 3;
+
+            player->CLOSE_GOSSIP_MENU();
+            return true;
+        }
+    }
     return false;
 }
 
@@ -1505,16 +2391,21 @@ struct npc_dimensiusAI : public Scripted_NoMovementAI
         }
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* pSender, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
+    void JustDied(Unit* /*pKiller*/) override
     {
-        // event is sent by dbscript
-        if (eventType == AI_EVENT_CUSTOM_EVENTAI_B && pSender->GetEntry() == NPC_CAPTAIN_SAEED)
-            m_creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_IMMUNE_TO_PLAYER);
+        if (Creature* saeed = GetClosestCreatureWithEntry(m_creature, NPC_CAPTAIN_SAEED, 40.0f))
+        {
+            if (npc_saeed_escortAI* ai = dynamic_cast<npc_saeed_escortAI*>(saeed->AI()))
+            {
+                ai->m_uiEventTimer = 3000;
+                ai->m_uiEvent = 7;
+            }
+        }
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         if (!m_bSpawnsFeeding && m_creature->GetHealthPercent() < 75.0f)
@@ -1574,7 +2465,7 @@ struct npc_dimensiusAI : public Scripted_NoMovementAI
     }
 };
 
-CreatureAI* GetAI_npc_dimensius(Creature* pCreature)
+UnitAI* GetAI_npc_dimensius(Creature* pCreature)
 {
     return new npc_dimensiusAI(pCreature);
 }
@@ -1623,9 +2514,9 @@ struct npc_salhadaarAI : public ScriptedAI
                 summon->ForcedDespawn(0);
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
     {
-        if (eventType == AI_EVENT_CUSTOM_A && (!m_creature->isInCombat()) && (!m_creature->isDead()))
+        if (eventType == AI_EVENT_CUSTOM_A && (!m_creature->IsInCombat()) && (!m_creature->IsDead()))
         {
             m_creature->RemoveAurasDueToSpell(SPELL_FLOAT);
             DoScriptText(SAY_THREAT, m_creature);
@@ -1633,7 +2524,7 @@ struct npc_salhadaarAI : public ScriptedAI
         }
     }
 
-    void JustDied(Unit* killer) override
+    void JustDied(Unit* /*killer*/) override
     {
         for (const auto& summonedCreature : m_uiSummoned)    // despawn all summoned creatures
             if (Creature* summon = m_creature->GetMap()->GetCreature(summonedCreature))
@@ -1654,12 +2545,12 @@ struct npc_salhadaarAI : public ScriptedAI
     {
         m_uiSummoned.push_back(pSummoned->GetObjectGuid());
         pSummoned->CastSpell(pSummoned, SPELL_SALAADIN_OVERSPARK, TRIGGERED_OLD_TRIGGERED);
-        pSummoned->AI()->AttackStart(m_creature->getVictim());
+        pSummoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (m_uiFoundBalls == false)
+        if (!m_uiFoundBalls)
         {
             std::list<Creature*> creatureList;
             GetCreatureListWithEntryInGrid(creatureList, m_creature, NPC_ENERGY_BALL, 50.0f);
@@ -1684,22 +2575,18 @@ struct npc_salhadaarAI : public ScriptedAI
                     m_creature->SetFactionTemporary(FACTION_SALHADAAR_HOSTILE, TEMPFACTION_RESTORE_COMBAT_STOP | TEMPFACTION_TOGGLE_NOT_SELECTABLE);
                     return;
                 }
-                else
-                {
-                    Reset();
-                    m_creature->ForcedDespawn();
-                    return;
-                }
+                Reset();
+                m_creature->ForcedDespawn();
+                return;
             }
-            else
-                m_uiAttackTimer -= uiDiff;
+            m_uiAttackTimer -= uiDiff;
         }
-        if (m_creature->isInCombat())
+        if (m_creature->IsInCombat())
         {
-            if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+            if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
                 return;
 
-            if (m_uiUsedMirrorImage == false && m_creature->GetHealthPercent() < 25) // at 25% hp cast mirror image, its two spells
+            if (!m_uiUsedMirrorImage && m_creature->GetHealthPercent() < 25) // at 25% hp cast mirror image, its two spells
             {
                 m_creature->CastSpell(m_creature, SPELL_MIRROR_IMAGE_1, TRIGGERED_OLD_TRIGGERED);
                 m_creature->CastSpell(m_creature, SPELL_MIRROR_IMAGE_2, TRIGGERED_OLD_TRIGGERED);
@@ -1713,8 +2600,7 @@ struct npc_salhadaarAI : public ScriptedAI
                     m_creature->CastSpell(m_creature, SPELL_GRAVITY_FLUX, TRIGGERED_NONE); // cast gravity flux every 15 seconds
                     return;
                 }
-                else
-                    m_uiGravityFlux -= uiDiff;
+                m_uiGravityFlux -= uiDiff;
 
                 if (m_uiStasisTimer <= uiDiff)
                 {
@@ -1733,7 +2619,7 @@ struct npc_salhadaarAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_salhadaar(Creature* pCreature)
+UnitAI* GetAI_npc_salhadaar(Creature* pCreature)
 {
     return new npc_salhadaarAI(pCreature);
 }
@@ -1751,13 +2637,13 @@ struct npc_energy_ballAI : public ScriptedAI
         m_uiInterruptTimer = 0;
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*pSender*/, Unit* /*pInvoker*/, uint32 /*uiMiscValue*/) override
     {
         if (eventType == AI_EVENT_CUSTOM_A)
             m_creature->CastSpell(nullptr, SPELL_SALAADIN_TESLA, TRIGGERED_NONE);
     }
 
-    void SpellHit(Unit* pCaster, const SpellEntry* pSpell) override
+    void SpellHit(Unit* /*pCaster*/, const SpellEntry* pSpell) override
     {
         if (pSpell->Id == SPELL_PROTECTORATE_DISRUPTOR) // recast beam after one minute if player doesnt engage mob
         {
@@ -1777,7 +2663,7 @@ struct npc_energy_ballAI : public ScriptedAI
                 GetCreatureListWithEntryInGrid(creatureList, m_creature, NPC_SALHADAAR, 100.0f);
                 for (std::list<Creature*>::const_iterator itr = creatureList.begin(); itr != creatureList.end(); ++itr)
                 {
-                    if (!(*itr)->isInCombat())
+                    if (!(*itr)->IsInCombat())
                     {
                         m_creature->CastSpell(m_creature, SPELL_SALAADIN_TESLA, TRIGGERED_NONE);
                     }
@@ -1799,15 +2685,56 @@ struct npc_energy_ballAI : public ScriptedAI
     }
 };
 
-CreatureAI* GetAI_npc_energy_ball(Creature* pCreature)
+UnitAI* GetAI_npc_energy_ball(Creature* pCreature)
 {
     return new npc_energy_ballAI(pCreature);
 }
 
 enum
 {
-    NPC_NEGATRON = 19851,
+    SPELL_PHASE_DISRUPTOR = 35734,
+};
 
+struct npc_void_conduitAI : public Scripted_NoMovementAI
+{
+    npc_void_conduitAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature) { Reset(); }
+
+    uint32 m_uiEvadeTimer;
+
+    void Reset() override
+    {
+        m_uiEvadeTimer = 0;
+    }
+
+    void SpellHit(Unit* /*pCaster*/, const SpellEntry* pSpell) override
+    {
+        if (pSpell->Id == SPELL_PHASE_DISRUPTOR)
+            m_uiEvadeTimer = 10000; // custom combat timer, to simulate proper leashing of this mob
+    }
+
+    void MoveInLineOfSight(Unit*) override {}
+
+    void UpdateAI(const uint32 uiDiff) override
+    {
+        if (m_uiEvadeTimer)
+        {
+            if (m_uiEvadeTimer <= uiDiff)
+                EnterEvadeMode(); // calls reset
+            else
+                m_uiEvadeTimer -= uiDiff;
+        }
+    }
+};
+
+UnitAI* GetAI_npc_void_conduit(Creature* pCreature)
+{
+    return new npc_void_conduitAI(pCreature);
+}
+
+enum
+{
+    NPC_NEGATRON = 19851,
+    
     SPELL_SCRAP_REAVER = 34630,
 
     SAY_ON_DEATH = -1000472,
@@ -1819,10 +2746,7 @@ struct npc_scrap_reaverAI : ScriptedPetAI
 {
     npc_scrap_reaverAI(Creature* creature) : ScriptedPetAI(creature)
     {
-        m_dontDoAnything = false;
-        m_despawnTimer = 0;
-        m_scriptTimer = 0;
-        m_areaCheckTimer = 1000;
+
     }
 
     ObjectGuid m_negatron;
@@ -1838,15 +2762,23 @@ struct npc_scrap_reaverAI : ScriptedPetAI
 
     }
 
+    bool CanHandleCharm() override { return true; }
+
     void JustRespawned() override
     {
         m_creature->SetStandState(UNIT_STAND_STATE_STAND);
+        m_dontDoAnything = false;
+        m_despawnTimer = 0;
+        m_scriptTimer = 0;
+        m_areaCheckTimer = 1000;
     }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* /*sender*/, Unit* /*invoker*/, uint32 /*miscValue*/) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* /*sender*/, Unit* /*invoker*/, uint32 /*miscValue*/) override
     {
         if (eventType == AI_EVENT_CUSTOM_A && !m_dontDoAnything)
             Die();
+        else if (eventType == AI_EVENT_CUSTOM_B)
+            m_creature->ForcedDespawn();
     }
 
     void Die()
@@ -1921,7 +2853,7 @@ struct npc_scrap_reaverAI : ScriptedPetAI
                 m_scriptTimer -= diff;
         }
 
-        if (m_areaCheckTimer)
+        if (m_areaCheckTimer && !m_despawnTimer) // Area check should not run if despawnTimer is already set
         {
             if (m_areaCheckTimer <= diff)
             {
@@ -1945,15 +2877,15 @@ struct npc_scrap_reaverAI : ScriptedPetAI
             return;
         }
 
-        if (!m_creature->isAlive())                             // should not be needed, isAlive is checked in mangos before calling UpdateAI
+        if (!m_creature->IsAlive())                             // should not be needed, IsAlive is checked in mangos before calling UpdateAI
             return;
 
         // UpdateAllies() is done in the generic PetAI in Mangos, but we can't do this from script side.
         // Unclear what side effects this has, but is something to be resolved from Mangos.
 
-        if (m_creature->getVictim())                            // in combat
+        if (m_creature->GetVictim())                            // in combat
         {
-            if (!m_creature->CanAttack(m_creature->getVictim()))
+            if (!m_creature->CanAttack(m_creature->GetVictim()))
             {
                 // target no longer valid for pet, so either attack stops or new target are selected
                 // doesn't normally reach this, because of how petAi is designed in Mangos. CombatStop
@@ -1973,7 +2905,7 @@ struct npc_scrap_reaverAI : ScriptedPetAI
             if (!owner)
                 return;
 
-            if (owner->isInCombat() && !HasReactState(REACT_PASSIVE))
+            if (owner->IsInCombat() && !HasReactState(REACT_PASSIVE))
             {
                 // Not correct in all cases.
                 // When mob initiate attack by spell, pet should not start attack before spell landed.
@@ -1992,10 +2924,29 @@ struct npc_scrap_reaverAI : ScriptedPetAI
     }
 };
 
-CreatureAI* GetAI_npc_scrap_reaver(Creature* creature)
+struct ScrapReaverSpell : public SpellScript, public AuraScript
 {
-    return new npc_scrap_reaverAI(creature);
-}
+    bool OnCheckTarget(const Spell* spell, Unit* target, SpellEffectIndex /*eff*/) const
+    {
+        // Only one player can control the scrap reaver
+        if (target->HasAura(SPELL_SCRAP_REAVER))
+            return false;
+        return true;
+    }
+
+    void OnApply(Aura* aura, bool apply) const override
+    {
+        if (aura->GetEffIndex() == EFFECT_INDEX_0 && !apply)
+        {
+            AIEventType eventId = AI_EVENT_CUSTOM_B;
+            Unit* caster = aura->GetCaster();
+            if (caster && caster->IsAlive())
+                eventId = AI_EVENT_CUSTOM_A;
+            if (aura->GetTarget()->AI())
+                aura->GetTarget()->AI()->SendAIEvent(eventId, aura->GetTarget(), aura->GetTarget());
+        }
+    }
+};
 
 enum
 {
@@ -2040,7 +2991,7 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
     {
         SetCombatMovement(false);
         m_spawnsPerLocation.resize(COUNT_SPAWNING_LOCATIONS);
-        SetReactState(REACT_DEFENSIVE);
+        SetReactState(REACT_PASSIVE);
         ResetEvent();
     }
 
@@ -2074,7 +3025,7 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
         ScriptedAI::JustRespawned();
     }
 
-    void JustDied(Unit* killer) override
+    void JustDied(Unit* /*killer*/) override
     {
         for (uint32 i = 0; i < COUNT_SPAWNING_LOCATIONS; i++)
         {
@@ -2114,7 +3065,6 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
     void EnterEvadeMode() override
     {
         m_creature->RemoveAllAurasOnEvade();
-        m_creature->DeleteThreatList();
         m_creature->CombatStop(true);
 
         m_creature->SetLootRecipient(nullptr);
@@ -2124,8 +3074,8 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
 
     void SummonedMovementInform(Creature* summoned, uint32 motionType, uint32 data) override
     {
-        if (motionType == WAYPOINT_MOTION_TYPE && data == 2 && m_creature->getVictim())
-            summoned->AI()->AttackStart(m_creature->getVictim());
+        if (motionType == WAYPOINT_MOTION_TYPE && data == 2 && m_creature->GetVictim())
+            summoned->AI()->AttackStart(m_creature->GetVictim());
     }
 
     void JustSummoned(Creature* summoned) override
@@ -2169,7 +3119,7 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
                     m_eventTimer = 100 * IN_MILLISECONDS;
                     break;
                 case 1: // revert to unattackable when out of combat
-                    if (!m_creature->isInCombat())
+                    if (!m_creature->IsInCombat())
                         ResetEvent();
                     break;
             }
@@ -2185,24 +3135,909 @@ struct npc_scrapped_fel_reaverAI : ScriptedAI
                 m_eventTimer -= diff;
             ProcessEvent();
         }
-
-        if (!m_creature->SelectHostileTarget())
-            return;
     }
 };
 
-CreatureAI* GetAI_npc_scrapped_fel_reaver(Creature* creature)
+UnitAI* GetAI_npc_scrapped_fel_reaver(Creature* creature)
 {
     return new npc_scrapped_fel_reaverAI(creature);
 }
 
+/*
+## Deathblow to the Legion script
+*/
+
+enum
+{
+    QUEST_DEATHBLOW_TO_THE_LEGION = 10409,
+
+    FACTION_DEATHBLOW               = 250, // during quest they have different faction
+    FACTION_DEATHBLOW_IN_PROGRESS   = 495,
+    FACTION_SHATTRATH               = 1743,
+
+    FACTION_KAYLAAN_HOSTILE         = 14,
+    FACTION_KAYLAAN_REDEEMED        = 290,
+
+    NPC_ADYEN_THE_LIGHTWARDEN   = 18537,
+    NPC_EXARCH_ORELIS           = 19466,
+    NPC_ANCHORITE_KARJA         = 19467,
+    NPC_ISHANAH                 = 18538,
+    NPC_KAYLAAN_THE_LOST        = 20794,
+    NPC_WRATH_LORD              = 20929,
+    // NPC_SOCRETHAR              = 20132  // defined in world map script
+
+    GOSSIP_SHATTRATH                        = 8117,
+    GOSSIP_NETHERSTORM                      = 8215,
+    GOSSIP_SOCRETHAR_DEAD_PLACEHOLDER_ID    = 40000, // uses a placeholder id due to no sniff available
+    GOSSIP_ACTION_START_DEATHBLOW = 1,
+
+    SPELL_POWER_OF_THE_LEGION           = 35596,
+    SPELL_KAYLAN_WRATH                  = 35614,
+    SPELL_CANCEL_POWER_OF_THE_LEGION    = 35597,
+    SPELL_WRATH_OF_SOCRETHAR            = 35598, // Ishanah version
+    SPELL_RESURRECTION                  = 35599,
+    SPELL_WRATH_OF_SOCRETHAR2           = 35600, // Kaylaan version
+    SPELL_DIVINE_SHIELD                 = 13874,
+    SPELL_PERMANENT_FEIGN_DEATH         = 29266,
+
+    // combat spells
+    // Adyen
+    SPELL_CRUSADER_STRIKE   = 14518,
+    SPELL_HAMMER_OF_JUSTICE = 13005,
+
+    // Kaylaan
+    SPELL_BURNING_LIGHT     = 37552,
+    SPELL_HOLY_SLAM         = 37572,
+    SPELL_HEAL              = 37569,
+    SPELL_AVENGERS_SHEILD   = 37554,
+
+    // Ishanah
+    SPELL_HOLY_SMITE        = 15238,
+    SPELL_POWER_WORD_SHIELD = 22187,
+    SPELL_GREATER_HEAL      = 35096,
+
+    // Anchorite Karja
+    SPELL_HOLY_FIRE = 17141,
+
+    // Exarch Orelis
+    SPELL_DEMORALIZING_SHOUT    = 13730,
+    SPELL_REND                  = 16509,
+    SPELL_HEROIC_STRIKE         = 29426,
+
+    // Socrethar
+    SPELL_CLEAVE                = 15496,
+    SPELL_SHADOW_BOLT_VOLLEY    = 28448,
+    SPELL_FIREBALL_BARRAGE      = 37540,
+
+    SAY_ADYEN_1     = -1001254,
+    SAY_SOCRETHAR_1 = -1001255,
+    SAY_ADYEN_2     = -1001256,
+    SAY_SOCRETHAR_2 = -1001257,
+    SAY_ORELIS_1    = -1001258,
+    SAY_KAYLAAN_1   = -1001259,
+    SAY_KAYLAAN_2   = -1001260,
+    SAY_KAYLAAN_3   = -1001261,
+    SAY_ADYEN_3     = -1001262,
+    SAY_KAYLAAN_4   = -1001263,
+    SAY_SOCRETHAR_3 = -1001264,
+    SAY_SOCRETHAR_4 = -1001265,
+    SAY_KAYLAAN_5   = -1001266,
+    SAY_KAYLAAN_6   = -1001267,
+    SAY_ISHANAH_1   = -1001268,
+    SAY_ISHANAH_2   = -1001269,
+    SAY_SOCRETHAR_5 = -1001270,
+    SAY_KAYLAAN_7   = -1001271,
+    SAY_KAYLAAN_8   = -1001272,
+    SAY_SOCRETHAR_6 = -1001273,
+
+    EVENT_SOCRETHAR_SAY_1   = 0,
+    EVENT_ADYEN_SAY_2       = 1,
+    EVENT_SOCRETHAR_SAY_2   = 2,
+    EVENT_KAYLAAN_MOVE      = 3,
+    EVENT_KAYLAAN_SAY_2     = 4,
+    EVENT_KAYLAAN_SAY_3     = 5,
+    EVENT_ADYEN_SAY_3       = 6,
+    EVENT_KAYLAAN_SAY_4     = 7,
+    EVENT_SOCRETHAR_CAST_POWER_OF_LEGION    = 8,
+    EVENT_SOCRETHAR_SAY_3                   = 9,
+    EVENT_KAYLAAN_SAY_5                     = 10,
+    EVENT_KAYLAAN_KNEEL                     = 11,
+    EVENT_ISHANAH_SAY_1                     = 12,
+    EVENT_ISHANAH_SAY_2                     = 13,
+    EVENT_SOCRETHAR_SAY_5                   = 14,
+    EVENT_SOCRETHAR_KILL_ISHANAH            = 15,
+    EVENT_KAYLAAN_HORRIFIED                 = 16,
+    EVENT_KAYLAAN_SAVE_ISHANAH              = 17,
+    EVENT_SOCRETHAR_SAY_6                   = 18,
+    EVENT_SOCRETHAR_KILL_KAYLAAN            = 19,
+    EVENT_SOCRETHAR_ATTACK                  = 20,
+
+    POINT_KAYLAAN_MOVE = 1,
+    POINT_KAYLAAN_SAVE_ISHANAH = 2,
+
+    PATH_ID_DEATHBLOW = 1,
+    WAYPOINT_ADYEN_LAST = 8,
+
+    DB_GUID_WRATH_LORD_1 = 73683,
+    DB_GUID_WRATH_LORD_2 = 73693,
+
+    PATH_ID_WRATH_LORD_1 = 1,
+    PATH_ID_WRATH_LORD_2 = 2,
+};
+
+struct npc_adyen_the_lightwardenAI : public ScriptedAI
+{
+    npc_adyen_the_lightwardenAI(Creature* creature) : ScriptedAI(creature), m_crusaderStrikeTimer(0), m_hammerOfJusticeTimer(0), m_eventStarted(false)
+    {
+        m_creature->GetCombatManager().SetLeashingDisable(true);
+    }
+
+    ObjectGuid m_playerGuid;
+    ObjectGuid m_orelisGuid;
+    ObjectGuid m_karjaGuid;
+    ObjectGuid m_ishanahGuid;
+    ObjectGuid m_kaylaanGuid;
+    ObjectGuid m_socretharGuid;
+
+    uint32 m_crusaderStrikeTimer;
+    uint32 m_hammerOfJusticeTimer;
+
+    bool m_eventStarted;
+
+    std::map<uint32, uint32> m_timers;
+
+    void Reset() override
+    {
+        m_crusaderStrikeTimer = 10000;
+        m_hammerOfJusticeTimer = 20000;
+    }
+
+    void AddTimer(const uint32 id, const uint32 timer)
+    {
+        m_timers[id] = timer;
+    }
+
+    void UpdateTimers(const uint32 diff)
+    {
+        std::vector<uint32> removedTimers;
+
+        for (auto& m_timer : m_timers)
+        {
+            if (m_timer.second <= diff)
+            {
+                ExecuteTimer(m_timer.first);
+                removedTimers.push_back(m_timer.first);
+            }
+            else
+                m_timer.second -= diff;
+        }
+
+        for (uint32 id : removedTimers)
+            m_timers.erase(id);
+    }
+
+    void ExecuteTimer(const uint32 id)
+    {
+        switch (id)
+        {
+            case EVENT_SOCRETHAR_SAY_1:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    DoScriptText(SAY_SOCRETHAR_1, socrethar, GetPlayerTarget());
+                AddTimer(EVENT_ADYEN_SAY_2, 6500);
+                break;
+            case EVENT_ADYEN_SAY_2:
+                DoScriptText(SAY_ADYEN_2, m_creature, GetPlayerTarget());
+                AddTimer(EVENT_SOCRETHAR_SAY_2, 6500);
+                m_creature->SummonCreature(NPC_KAYLAAN_THE_LOST, 4955.793f, 3926.349f, 208.391f, 4.570264f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 3600000, true, false, 1);
+                break;
+            case EVENT_SOCRETHAR_SAY_2:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    DoScriptText(SAY_SOCRETHAR_2, socrethar, GetPlayerTarget());
+                break;
+            case EVENT_KAYLAAN_MOVE:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                {
+                    kaylaan->SetStandState(UNIT_STAND_STATE_STAND);
+                    kaylaan->GetMotionMaster()->MovePoint(POINT_KAYLAAN_MOVE, 4940.221f, 3847.434f, 211.5027f);
+                }
+                break;
+            case EVENT_KAYLAAN_SAY_2:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                {
+                    DoScriptText(SAY_KAYLAAN_2, kaylaan, GetPlayerTarget());
+                    AddTimer(EVENT_KAYLAAN_SAY_3, 9000);
+                }
+                break;
+            case EVENT_KAYLAAN_SAY_3:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                    DoScriptText(SAY_KAYLAAN_3, kaylaan, GetPlayerTarget());
+                AddTimer(EVENT_ADYEN_SAY_3, 6000);
+                break;
+            case EVENT_ADYEN_SAY_3:
+                DoScriptText(SAY_ADYEN_3, m_creature, GetPlayerTarget());
+                AddTimer(EVENT_KAYLAAN_SAY_4, 7000);
+                break;
+            case EVENT_KAYLAAN_SAY_4:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                    DoScriptText(SAY_KAYLAAN_4, kaylaan, GetPlayerTarget());
+                AddTimer(EVENT_SOCRETHAR_CAST_POWER_OF_LEGION, 6000);
+                break;
+            case EVENT_SOCRETHAR_CAST_POWER_OF_LEGION:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    socrethar->CastSpell(nullptr, SPELL_POWER_OF_THE_LEGION, TRIGGERED_NONE);
+
+                AddTimer(EVENT_SOCRETHAR_SAY_3, 3500);
+                break;
+            case EVENT_SOCRETHAR_SAY_3:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    DoScriptText(SAY_SOCRETHAR_3, socrethar, GetPlayerTarget());
+
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                {
+                    kaylaan->setFaction(FACTION_KAYLAAN_HOSTILE);
+                    if (Player* player = GetPlayerTarget())
+                        kaylaan->AI()->AttackStart(player);
+                    else
+                        kaylaan->AI()->AttackStart(m_creature);
+                    AttackStart(kaylaan);
+                    if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+                        orelis->AI()->AttackStart(kaylaan);
+                    if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+                        karja->AI()->AttackStart(kaylaan);
+                }
+                break;
+            case EVENT_KAYLAAN_SAY_5:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                    DoScriptText(SAY_KAYLAAN_5, kaylaan, GetPlayerTarget());
+                break;
+            case EVENT_KAYLAAN_KNEEL:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                    kaylaan->SetStandState(UNIT_STAND_STATE_KNEEL);
+                AddTimer(EVENT_ISHANAH_SAY_1, 500);
+                break;
+            case EVENT_ISHANAH_SAY_1:
+                if (Creature* ishanah = m_creature->GetMap()->GetCreature(m_ishanahGuid))
+                    DoScriptText(SAY_ISHANAH_1, ishanah, m_creature->GetMap()->GetCreature(m_kaylaanGuid));
+                AddTimer(EVENT_ISHANAH_SAY_2, 7000);
+                break;
+            case EVENT_ISHANAH_SAY_2:
+                if (Creature* ishanah = m_creature->GetMap()->GetCreature(m_ishanahGuid))
+                    DoScriptText(SAY_ISHANAH_2, ishanah, m_creature->GetMap()->GetCreature(m_kaylaanGuid));
+                AddTimer(EVENT_SOCRETHAR_SAY_5, 7500);
+                break;
+            case EVENT_SOCRETHAR_SAY_5:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    DoScriptText(SAY_SOCRETHAR_5, socrethar, m_creature->GetMap()->GetCreature(m_kaylaanGuid));
+                AddTimer(EVENT_SOCRETHAR_KILL_ISHANAH, 3000);
+                break;
+            case EVENT_SOCRETHAR_KILL_ISHANAH:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    socrethar->CastSpell(nullptr, SPELL_WRATH_OF_SOCRETHAR, TRIGGERED_NONE);
+                AddTimer(EVENT_KAYLAAN_HORRIFIED, 7500);
+                break;
+            case EVENT_KAYLAAN_HORRIFIED:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                {
+                    kaylaan->CastSpell(kaylaan, SPELL_CANCEL_POWER_OF_THE_LEGION, TRIGGERED_NONE);
+                    DoScriptText(SAY_KAYLAAN_7, kaylaan, kaylaan);
+                    kaylaan->setFaction(FACTION_KAYLAAN_REDEEMED);
+                    kaylaan->SetStandState(UNIT_STAND_STATE_STAND);
+                    kaylaan->GetMotionMaster()->MovePoint(POINT_KAYLAAN_SAVE_ISHANAH, 4941.518f, 3837.293f, 211.5089f);
+                }
+                break;
+            case EVENT_KAYLAAN_SAVE_ISHANAH:
+                if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                    kaylaan->CastSpell(nullptr, SPELL_RESURRECTION, TRIGGERED_NONE);
+                AddTimer(EVENT_SOCRETHAR_SAY_6, 6000);
+                break;
+            case EVENT_SOCRETHAR_SAY_6:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    DoScriptText(SAY_SOCRETHAR_6, socrethar, m_creature->GetMap()->GetCreature(m_kaylaanGuid));
+                AddTimer(EVENT_SOCRETHAR_KILL_KAYLAAN, 6000);
+                break;
+            case EVENT_SOCRETHAR_KILL_KAYLAAN:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                    socrethar->CastSpell(nullptr, SPELL_WRATH_OF_SOCRETHAR2, TRIGGERED_NONE);
+                AddTimer(EVENT_SOCRETHAR_ATTACK, 3500);
+                break;
+            case EVENT_SOCRETHAR_ATTACK:
+                if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                {
+                    socrethar->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
+                    socrethar->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
+                    if (Creature* ishanah = m_creature->GetMap()->GetCreature(m_ishanahGuid))
+                        socrethar->AI()->AttackStart(ishanah);
+                    AttackStart(socrethar);
+                    if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+                        orelis->AI()->AttackStart(socrethar);
+                    if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+                        karja->AI()->AttackStart(socrethar);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    Player* GetPlayerTarget() const
+    {
+        return m_creature->GetMap()->GetPlayer(m_playerGuid);
+    }
+
+    void JustSummoned(Creature* summoned) override
+    {
+        switch (summoned->GetEntry())
+        {
+            case NPC_EXARCH_ORELIS:     m_orelisGuid = summoned->GetObjectGuid(); break;
+            case NPC_ANCHORITE_KARJA:   m_karjaGuid = summoned->GetObjectGuid(); break;
+            case NPC_ISHANAH:           m_ishanahGuid = summoned->GetObjectGuid(); break;
+            case NPC_KAYLAAN_THE_LOST:  m_kaylaanGuid = summoned->GetObjectGuid(); break;
+            default: break;
+        }
+    }
+
+    void StartEvent(Player* player)
+    {
+        if (Creature* socrethar = ((ScriptedInstance*)m_creature->GetMap()->GetInstanceData())->GetSingleCreatureFromStorage(NPC_SOCRETHAR))
+        {
+            if (!socrethar->IsAlive())
+                return;
+
+            m_socretharGuid = socrethar->GetObjectGuid();
+            socrethar->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
+        }
+        else
+            return;
+
+        if (m_eventStarted)
+            return;
+
+        m_playerGuid = player->GetObjectGuid();
+        m_creature->setFaction(FACTION_DEATHBLOW_IN_PROGRESS);
+        // TODO: Formation movement
+        if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+        {
+            orelis->setFaction(FACTION_DEATHBLOW_IN_PROGRESS);
+            orelis->GetMotionMaster()->MoveFollow(m_creature, 1.f, M_PI_F - M_PI_F / 4, true);
+        }
+        if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+        {
+            karja->setFaction(FACTION_DEATHBLOW_IN_PROGRESS);
+            karja->GetMotionMaster()->MoveFollow(m_creature, 1.f, M_PI_F + M_PI_F / 4, true);
+        }
+        if (Creature* wrathLord = m_creature->GetMap()->GetCreature(ObjectGuid(HIGHGUID_UNIT, uint32(NPC_WRATH_LORD), uint32(DB_GUID_WRATH_LORD_1))))
+        {
+            wrathLord->GetMotionMaster()->Clear(false, true);
+            wrathLord->GetMotionMaster()->MoveWaypoint(PATH_ID_WRATH_LORD_1);
+        }
+        if (Creature* wrathLord = m_creature->GetMap()->GetCreature(ObjectGuid(HIGHGUID_UNIT, uint32(NPC_WRATH_LORD), uint32(DB_GUID_WRATH_LORD_2))))
+        {
+            wrathLord->GetMotionMaster()->Clear(false, true);
+            wrathLord->GetMotionMaster()->MoveWaypoint(PATH_ID_WRATH_LORD_2);
+        }
+
+        m_creature->GetMotionMaster()->Clear(false, true);
+        m_creature->GetMotionMaster()->MoveWaypoint(PATH_ID_DEATHBLOW);
+        m_creature->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+        m_eventStarted = true;
+    }
+
+    void DespawnEvent()
+    {
+        if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+            orelis->ForcedDespawn(10000);
+        if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+            karja->ForcedDespawn(10000);
+        m_creature->ForcedDespawn(10000);
+    }
+
+    void FailEvent()
+    {
+        if (Player* player = m_creature->GetMap()->GetPlayer(m_playerGuid))
+            player->FailQuestForGroup(QUEST_DEATHBLOW_TO_THE_LEGION);
+        if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+            orelis->ForcedDespawn();
+        if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+            karja->ForcedDespawn();
+        if (Creature* ishanah = m_creature->GetMap()->GetCreature(m_ishanahGuid))
+            ishanah->ForcedDespawn();
+        if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+        {
+            socrethar->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
+            socrethar->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
+        }
+        m_creature->ForcedDespawn();
+    }
+
+    void EndEvent(Creature* ishanah)
+    {
+        if (Player* player = m_creature->GetMap()->GetPlayer(m_playerGuid))
+            player->RewardPlayerAndGroupAtEventExplored(QUEST_DEATHBLOW_TO_THE_LEGION, m_creature);
+        if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+            orelis->ForcedDespawn(60000); // can be dead
+        if (Creature* karja = m_creature->GetMap()->GetCreature(m_karjaGuid))
+            karja->ForcedDespawn(60000); // can be dead
+        ishanah->SetFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
+        ishanah->ForcedDespawn(60000);
+        m_creature->ForcedDespawn(60000);
+    }
+
+    void MovementInform(uint32 movementType, uint32 data) override
+    {
+        if (movementType == WAYPOINT_MOTION_TYPE)
+            WaypointReached(data);
+    }
+
+    void SummonedMovementInform(Creature* summoned, uint32 movementType, uint32 data) override
+    {
+        switch (movementType)
+        {
+            case WAYPOINT_MOTION_TYPE:
+                SummonedWaypointReached(summoned, data);
+                break;
+            case POINT_MOTION_TYPE:
+                SummonedPointReached(summoned, data);
+                break;
+        }
+    }
+
+    void WaypointReached(uint32 pointId)
+    {
+        switch (pointId)
+        {
+            case WAYPOINT_ADYEN_LAST: // Last initial waypoint
+            {
+                m_creature->GetMotionMaster()->Clear(false, true);
+                m_creature->GetMotionMaster()->MoveIdle();
+                DoScriptText(SAY_ADYEN_1, m_creature, m_creature->GetMap()->GetPlayer(m_playerGuid));
+                AddTimer(EVENT_SOCRETHAR_SAY_1, 6500);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    void SummonedWaypointReached(Creature* summoned, uint32 pointId)
+    {
+        switch (summoned->GetEntry())
+        {
+            case NPC_ISHANAH:
+                switch (pointId)
+                {
+                    case 7:
+                        summoned->SetWalk(true);
+                        break;
+                    case 8:
+                        summoned->GetMotionMaster()->Clear(false, true);
+                        summoned->GetMotionMaster()->MoveIdle();
+                        summoned->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
+                        if (Creature* kaylaan = m_creature->GetMap()->GetCreature(m_kaylaanGuid))
+                        {
+                            DoScriptText(SAY_KAYLAAN_6, kaylaan, GetPlayerTarget());
+                            kaylaan->SetFacingToObject(summoned);
+                        }
+                        if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                            socrethar->SetFacingToObject(summoned);
+                        AddTimer(EVENT_KAYLAAN_KNEEL, 6000);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case NPC_KAYLAAN_THE_LOST:
+                switch (pointId)
+                {
+                    case 6:
+                        summoned->GetMotionMaster()->Clear(false, true);
+                        summoned->GetMotionMaster()->MoveIdle();
+                        summoned->SetStandState(UNIT_STAND_STATE_KNEEL);
+                        if (Creature* orelis = m_creature->GetMap()->GetCreature(m_orelisGuid))
+                            DoScriptText(SAY_ORELIS_1, orelis, GetPlayerTarget());
+                        AddTimer(EVENT_KAYLAAN_MOVE, 6500);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    void SummonedPointReached(Creature* summoned, uint32 pointId)
+    {
+        switch (summoned->GetEntry())
+        {
+            case NPC_KAYLAAN_THE_LOST:
+                switch (pointId)
+                {
+                    case POINT_KAYLAAN_MOVE:
+                        DoScriptText(SAY_KAYLAAN_1, summoned, GetPlayerTarget());
+                        summoned->SetFacingTo(3.837011f);
+                        AddTimer(EVENT_KAYLAAN_SAY_2, 9000);
+                        break;
+                    case POINT_KAYLAAN_SAVE_ISHANAH:
+                        summoned->CastSpell(summoned, SPELL_DIVINE_SHIELD, TRIGGERED_NONE);
+                        DoScriptText(SAY_KAYLAAN_8, summoned, summoned);
+                        AddTimer(EVENT_KAYLAAN_SAVE_ISHANAH, 1000);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    void SummonedJustReachedHome(Creature* summoned) override
+    {
+        switch (summoned->GetEntry())
+        {
+            case NPC_ISHANAH:
+            {
+                EndEvent(summoned);
+                break;
+            }
+            case NPC_ANCHORITE_KARJA:
+                summoned->GetMotionMaster()->MoveFollow(m_creature, 1.f, M_PI_F + M_PI_F / 4, true);
+                break;
+            case NPC_EXARCH_ORELIS:
+                summoned->GetMotionMaster()->MoveFollow(m_creature, 1.f, M_PI_F - M_PI_F / 4, true);
+                break;
+        }
+    }
+
+    void ReceiveAIEvent(AIEventType eventType, Unit* sender, Unit* /*invoker*/, uint32 /*miscValue*/) override
+    {
+        if (eventType == AI_EVENT_CUSTOM_A)
+        {
+            Creature* ishanah = m_creature->SummonCreature(NPC_ISHANAH, 4866.2f, 3799.016f, 199.141f, 0.4680258f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 3600000, true, true, 1, FACTION_DEATHBLOW);
+            ishanah->SetUInt32Value(UNIT_NPC_FLAGS, 0);
+            ishanah->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC); // fix for blizzlike bug that can occur on retail
+            ishanah->GetMotionMaster()->Clear(false, true);
+            ishanah->GetMotionMaster()->MoveWaypoint(PATH_ID_DEATHBLOW);
+            if (Creature* socrethar = m_creature->GetMap()->GetCreature(m_socretharGuid))
+                DoScriptText(SAY_SOCRETHAR_4, socrethar, sender);
+            AddTimer(EVENT_KAYLAAN_SAY_5, 7000);
+        }
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        FailEvent();
+    }
+
+    void UpdateAI(const uint32 diff) override
+    {
+        UpdateTimers(diff);
+
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+            return;
+
+        if (m_hammerOfJusticeTimer <= diff)
+        {
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HAMMER_OF_JUSTICE) == CAST_OK)
+            {
+                m_hammerOfJusticeTimer = 30000;
+                return;
+            }
+        }
+        else
+            m_hammerOfJusticeTimer -= diff;
+
+        if (m_crusaderStrikeTimer <= diff)
+        {
+            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_CRUSADER_STRIKE) == CAST_OK)
+            {
+                m_crusaderStrikeTimer = 15000;
+                return;
+            }
+        }
+        else
+            m_crusaderStrikeTimer -= diff;
+
+        DoMeleeAttackIfReady();
+    }
+};
+
+enum KaylaanActions
+{
+    KAYLAAN_ACTION_HEAL,
+    KAYLAAN_ACTION_AVENGERS,
+    KAYLAAN_ACTION_HOLY_SLAM,
+    KAYLAAN_ACTION_BURNING_LIGHT,
+    KAYLAAN_ACTION_MAX,
+};
+
+struct npc_kaylaan_the_lostAI : public ScriptedAI
+{
+    npc_kaylaan_the_lostAI(Creature* creature) : ScriptedAI(creature), m_deathPrevented(false), m_avengersShieldTimer(0), m_burningLightTimer(0), m_healTimer(0), m_holySlamTimer(0)
+    {
+        m_creature->GetCombatManager().SetLeashingDisable(true);
+    }
+
+    bool m_deathPrevented;
+
+    uint32 m_avengersShieldTimer;
+    uint32 m_burningLightTimer;
+    uint32 m_healTimer;
+    uint32 m_holySlamTimer;
+
+    bool m_actionReadyStatus[KAYLAAN_ACTION_MAX];
+
+    void Reset() override
+    {
+        m_avengersShieldTimer = 0;
+        m_burningLightTimer = 2000;
+        m_healTimer = 0;
+        m_holySlamTimer = 10000;
+
+        m_actionReadyStatus[KAYLAAN_ACTION_HEAL] = false;
+        m_actionReadyStatus[KAYLAAN_ACTION_AVENGERS] = true;
+        m_actionReadyStatus[KAYLAAN_ACTION_BURNING_LIGHT] = false;
+        m_actionReadyStatus[KAYLAAN_ACTION_HOLY_SLAM] = false;
+    }
+
+    void SpellHitTarget(Unit* target, const SpellEntry* spell) override
+    {
+        if (target->GetEntry() == NPC_ISHANAH && spell->Id == SPELL_RESURRECTION)
+            target->RemoveAurasDueToSpell(SPELL_PERMANENT_FEIGN_DEATH);
+    }
+
+    void DamageTaken(Unit* /*dealer*/, uint32& damage, DamageEffectType /*damagetype*/, SpellEntry const* /*spellInfo*/) override
+    {
+        if (damage < m_creature->GetHealth())
+            return;
+
+        damage = std::min(damage, m_creature->GetHealth() - 1);
+
+        if (m_deathPrevented)
+            return;
+
+        m_deathPrevented = true;
+
+        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PLAYER);
+        m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_NPC);
+        m_creature->CastSpell(nullptr, SPELL_KAYLAN_WRATH, TRIGGERED_NONE);
+        EnterEvadeMode();
+    }
+
+    void JustReachedHome() override
+    {
+        if (Unit* spawner = m_creature->GetSpawner()) // spawner is Adyen
+            if (spawner->AI() && spawner->GetTypeId() == TYPEID_UNIT)
+                m_creature->AI()->SendAIEvent(AI_EVENT_CUSTOM_A, spawner, static_cast<Creature*>(spawner));
+    }
+
+    void UpdateActions()
+    {
+        if (!m_actionReadyStatus[KAYLAAN_ACTION_HEAL])
+            if (m_creature->GetHealthPercent() < 50.f && !m_healTimer)
+                m_actionReadyStatus[KAYLAAN_ACTION_HEAL] = true;
+    }
+
+    void ExecuteActions()
+    {
+        if (m_creature->IsNonMeleeSpellCasted(false) || m_combatScriptHappening)
+            return;
+
+        for (uint32 i = 0; i < KAYLAAN_ACTION_MAX; ++i)
+        {
+            if (m_actionReadyStatus[i])
+            {
+                switch (i)
+                {
+                    case KAYLAAN_ACTION_HEAL:
+                    {
+                        if (DoCastSpellIfCan(m_creature, SPELL_HEAL) == CAST_OK)
+                        {
+                            m_healTimer = 15000;
+                            m_actionReadyStatus[i] = false;
+                            return;
+                        }
+                        break;
+                    }
+                    case KAYLAAN_ACTION_AVENGERS:
+                    {
+                        if (m_creature->IsInRange(m_creature->GetVictim(), 8.f, 30.f))
+                        {
+                            if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_AVENGERS_SHEILD) == CAST_OK)
+                            {
+                                m_avengersShieldTimer = 15000;
+                                m_actionReadyStatus[i] = false;
+                                return;
+                            }
+                        }
+                        break;
+                    }
+                    case KAYLAAN_ACTION_HOLY_SLAM:
+                    {
+                        if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_HOLY_SLAM) == CAST_OK)
+                        {
+                            m_holySlamTimer = 30000;
+                            m_actionReadyStatus[i] = false;
+                            return;
+                        }
+                        break;
+                    }
+                    case KAYLAAN_ACTION_BURNING_LIGHT:
+                    {
+                        if (DoCastSpellIfCan(m_creature->GetVictim(), SPELL_BURNING_LIGHT) == CAST_OK)
+                        {
+                            m_burningLightTimer = 15000;
+                            m_actionReadyStatus[i] = false;
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+
+    void UpdateAI(const uint32 diff) override
+    {
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
+            return;
+
+        if (!m_actionReadyStatus[KAYLAAN_ACTION_AVENGERS])
+        {
+            if (m_avengersShieldTimer <= diff)
+            {
+                m_avengersShieldTimer = 0;
+                m_actionReadyStatus[KAYLAAN_ACTION_AVENGERS] = true;
+            }
+            else
+                m_avengersShieldTimer -= diff;
+        }
+
+        if (m_healTimer)
+        {
+            if (m_healTimer <= diff)
+                m_healTimer = 0;
+            else
+                m_healTimer -= diff;
+        }
+
+        if (!m_actionReadyStatus[KAYLAAN_ACTION_HOLY_SLAM])
+        {
+            if (m_holySlamTimer <= diff)
+            {
+                m_holySlamTimer = 0;
+                m_actionReadyStatus[KAYLAAN_ACTION_HOLY_SLAM] = true;
+            }
+            else
+                m_holySlamTimer -= diff;
+        }
+
+        if (!m_actionReadyStatus[KAYLAAN_ACTION_BURNING_LIGHT])
+        {
+            if (m_burningLightTimer <= diff)
+            {
+                m_burningLightTimer = 0;
+                m_actionReadyStatus[KAYLAAN_ACTION_BURNING_LIGHT] = true;
+            }
+            else
+                m_burningLightTimer -= diff;
+        }
+
+        UpdateActions();
+        ExecuteActions();
+
+        DoMeleeAttackIfReady();
+    }
+};
+
+bool AreaTrigger_at_socrethar_seat(Player* player, AreaTriggerEntry const* /*at*/)
+{
+    if (player->IsCurrentQuest(QUEST_DEATHBLOW_TO_THE_LEGION))
+    {
+        if (player->GetMap()->SpawnedCountForEntry(NPC_ADYEN_THE_LIGHTWARDEN) == 0)
+        {
+            Creature* adyen = player->SummonCreature(NPC_ADYEN_THE_LIGHTWARDEN, 4805.796f, 3774.112f, 210.6172f, 5.550147f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 3600000, true, false, 1, FACTION_DEATHBLOW, 0, true);
+            adyen->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_QUESTGIVER);
+            Creature* orelis = adyen->SummonCreature(NPC_EXARCH_ORELIS, 4804.807f, 3775.562f, 210.6171f, 5.532694f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 3600000, true, false, 1, FACTION_DEATHBLOW);
+            orelis->SetUInt32Value(UNIT_NPC_FLAGS, 0);
+            Creature* karja = adyen->SummonCreature(NPC_ANCHORITE_KARJA, 4803.637f, 3773.844f, 210.6176f, 5.602507f, TEMPSPAWN_TIMED_OOC_OR_DEAD_DESPAWN, 3600000, true, false, 1, FACTION_DEATHBLOW);
+            karja->SetUInt32Value(UNIT_NPC_FLAGS, 0);
+        }
+    }
+    return false;
+}
+
+bool GossipHello_npc_adyen_the_lightwarden(Player* player, Creature* creature)
+{
+    uint32 gossipId = GOSSIP_NETHERSTORM;
+
+    // custom code required because it utilizes two entries
+    if (creature->getFaction() == FACTION_SHATTRATH)
+        gossipId = GOSSIP_SHATTRATH;
+    else
+    {
+        if (npc_adyen_the_lightwardenAI* ai = dynamic_cast<npc_adyen_the_lightwardenAI*>(creature->AI()))
+        {
+            Creature* socrethar = ((ScriptedInstance*)creature->GetMap()->GetInstanceData())->GetSingleCreatureFromStorage(NPC_SOCRETHAR);
+            if (!socrethar || !socrethar->IsAlive() || socrethar->IsInCombat())
+                ai->DespawnEvent();
+        }
+    }
+    player->PrepareGossipMenu(creature, gossipId);
+    player->SendPreparedGossip(creature);
+    return true;
+}
+
+bool GossipSelect_npc_adyen_the_lightwarden(Player* player, Creature* creature, uint32 /*sender*/, uint32 action)
+{
+    if (action == 1)
+    {
+        if (npc_adyen_the_lightwardenAI* ai = dynamic_cast<npc_adyen_the_lightwardenAI*>(creature->AI()))
+            ai->StartEvent(player);
+
+        player->CLOSE_GOSSIP_MENU();
+        return true;
+    }
+    return false;
+}
+
+struct Soulbind : public SpellScript
+{
+    void OnEffectExecute(Spell* spell, SpellEffectIndex /*effIdx*/) const override
+    {
+        Unit* caster = spell->GetCaster();
+        Unit* target = spell->GetUnitTarget();
+        if (!target)
+            return;
+
+        caster->CastSpell(target, 36141, TRIGGERED_OLD_TRIGGERED); // spell id is in spell effect value
+    }
+};
+
+struct UltraDeconsolodationZapper : public SpellScript
+{
+    void OnEffectExecute(Spell* spell, SpellEffectIndex effIdx) const override
+    {
+        if (effIdx != EFFECT_INDEX_2)
+            return;
+
+        Unit* target = spell->GetUnitTarget();
+        if (!target)
+            return;
+
+        target->CastSpell(nullptr, 34427, TRIGGERED_OLD_TRIGGERED); // Ethereal Teleport
+    }
+};
+
+enum
+{
+    NPC_BOOM = 20284,
+    NPC_BOOM_BOT = 19692,
+};
+
+struct ThrowBoomsDoom : public SpellScript
+{
+    bool OnCheckTarget(const Spell* /*spell*/, GameObject* target, SpellEffectIndex /*eff*/) const
+    {
+        // prevent exploit of killing anything else
+        if (target->GetEntry() != NPC_BOOM && target->GetEntry() != NPC_BOOM_BOT)
+            return false;
+        return true;
+    }
+};
+
 void AddSC_netherstorm()
 {
-    Script* pNewScript;
+    Script* pNewScript = new Script;
+    pNewScript->Name = "go_manaforge_control_console";
+    pNewScript->pGossipHelloGO = &GossipHello_go_manaforge;
+    pNewScript->pGossipSelectGO = &GossipSelect_go_manaforge;
+    pNewScript->RegisterSelf();
 
     pNewScript = new Script;
-    pNewScript->Name = "go_manaforge_control_console";
-    pNewScript->pGOUse = &GOUse_go_manaforge_control_console;
+    pNewScript->Name = "npc_manaforge_spawn";
+    pNewScript->GetAI = &GetAI_npc_manaforge_spawnAI;
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;
@@ -2260,6 +4095,17 @@ void AddSC_netherstorm()
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;
+    pNewScript->Name = "npc_saeed";
+    pNewScript->GetAI = &GetAI_npc_saeed;
+    pNewScript->pGossipSelect = &GossipSelect_npc_saeed;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_manaforge_spawn";
+    pNewScript->GetAI = &GetAI_npc_manaforge_spawnAI;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
     pNewScript->Name = "npc_salhadaar";
     pNewScript->GetAI = &GetAI_npc_salhadaar;
     pNewScript->RegisterSelf();
@@ -2270,12 +4116,39 @@ void AddSC_netherstorm()
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;
+    pNewScript->Name = "npc_void_conduit";
+    pNewScript->GetAI = &GetAI_npc_void_conduit;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
     pNewScript->Name = "npc_scrap_reaver";
-    pNewScript->GetAI = &GetAI_npc_scrap_reaver;
+    pNewScript->GetAI = &GetNewAIInstance<npc_scrap_reaverAI>;
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;
     pNewScript->Name = "npc_scrapped_fel_reaver";
     pNewScript->GetAI = &GetAI_npc_scrapped_fel_reaver;
     pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "at_socrethar_seat";
+    pNewScript->pAreaTrigger = &AreaTrigger_at_socrethar_seat;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_adyen_the_lightwarden";
+    pNewScript->GetAI = &GetNewAIInstance<npc_adyen_the_lightwardenAI>;
+    pNewScript->pGossipHello = &GossipHello_npc_adyen_the_lightwarden;
+    pNewScript->pGossipSelect = &GossipSelect_npc_adyen_the_lightwarden;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_kaylaan_the_lost";
+    pNewScript->GetAI = &GetNewAIInstance<npc_kaylaan_the_lostAI>;
+    pNewScript->RegisterSelf();
+
+    RegisterSpellScript<Soulbind>("spell_soulbind");
+    RegisterSpellScript<UltraDeconsolodationZapper>("spell_ultra_deconsolodation_zapper");
+    RegisterSpellScript<ThrowBoomsDoom>("spell_throw_booms_doom");
+    RegisterScript<ScrapReaverSpell>("spell_scrap_reaver_spell");
 }

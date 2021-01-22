@@ -37,14 +37,21 @@
 void utf8print(const char* str)
 {
 #if PLATFORM == PLATFORM_WINDOWS
-    wchar_t wtemp_buf[6000];
-    size_t wtemp_len = 6000 - 1;
-    if (!Utf8toWStr(str, strlen(str), wtemp_buf, wtemp_len))
+    std::wstring wtemp_buf;
+    std::string temp_buf(str);
+
+    if (!Utf8toWStr(temp_buf, wtemp_buf, 6000))
         return;
 
-    char temp_buf[6000];
-    CharToOemBuffW(&wtemp_buf[0], &temp_buf[0], wtemp_len + 1);
-    printf("%s", temp_buf);
+    // Guarantee null termination
+    if (!temp_buf.empty())
+    {
+        wtemp_buf.push_back('\0');
+        temp_buf.resize(wtemp_buf.size());
+        CharToOemBuffW(&wtemp_buf[0], &temp_buf[0], wtemp_buf.size());
+    }
+
+    printf("%s", temp_buf.c_str());
 #else
     printf("%s", str);
 #endif
@@ -126,6 +133,14 @@ bool ChatHandler::GetDeletedCharacterInfoList(DeletedInfoList& foundList, std::s
 
     if (resultChar)
     {
+        if (resultChar->GetRowCount() > 100)
+        {
+            PSendSysMessage("Too many results %llu. Narrow it down.", resultChar->GetRowCount());
+            SetSentErrorMessage(true);
+            delete resultChar;
+            return false;
+        }
+
         do
         {
             Field* fields = resultChar->Fetch();
@@ -199,18 +214,18 @@ void ChatHandler::HandleCharacterDeletedListHelper(DeletedInfoList const& foundL
         SendSysMessage(LANG_CHARACTER_DELETED_LIST_BAR);
     }
 
-    for (DeletedInfoList::const_iterator itr = foundList.begin(); itr != foundList.end(); ++itr)
+    for (const auto& itr : foundList)
     {
-        std::string dateStr = TimeToTimestampStr(itr->deleteDate);
+        std::string dateStr = TimeToTimestampStr(itr.deleteDate);
 
         if (!m_session)
             PSendSysMessage(LANG_CHARACTER_DELETED_LIST_LINE_CONSOLE,
-                            itr->lowguid, itr->name.c_str(), itr->accountName.empty() ? "<nonexistent>" : itr->accountName.c_str(),
-                            itr->accountId, dateStr.c_str());
+                itr.lowguid, itr.name.c_str(), itr.accountName.empty() ? "<nonexistent>" : itr.accountName.c_str(),
+                itr.accountId, dateStr.c_str());
         else
             PSendSysMessage(LANG_CHARACTER_DELETED_LIST_LINE_CHAT,
-                            itr->lowguid, itr->name.c_str(), itr->accountName.empty() ? "<nonexistent>" : itr->accountName.c_str(),
-                            itr->accountId, dateStr.c_str());
+                itr.lowguid, itr.name.c_str(), itr.accountName.empty() ? "<nonexistent>" : itr.accountName.c_str(),
+                itr.accountId, dateStr.c_str());
     }
 
     if (!m_session)
@@ -321,8 +336,8 @@ bool ChatHandler::HandleCharacterDeletedRestoreCommand(char* args)
     if (newCharName.empty())
     {
         // Drop nonexistent account cases
-        for (DeletedInfoList::iterator itr = foundList.begin(); itr != foundList.end(); ++itr)
-            HandleCharacterDeletedRestoreHelper(*itr);
+        for (auto& itr : foundList)
+            HandleCharacterDeletedRestoreHelper(itr);
     }
     else if (foundList.size() == 1 && normalizePlayerName(newCharName))
     {
@@ -461,8 +476,8 @@ bool ChatHandler::HandleAccountOnlineListCommand(char* args)
         return false;
 
     ///- Get the list of accounts ID logged to the realm
-    //                                                 0   1         2        3        4
-    QueryResult* result = LoginDatabase.PQuery("SELECT id, username, last_ip, gmlevel, expansion FROM account WHERE active_realm_id = %u", realmID);
+    //                                                 0            1         2        3        4
+    QueryResult* result = LoginDatabase.PQuery("SELECT distinct id, username, ip, gmlevel, expansion FROM account a join account_logons b on(a.id=b.accountId) WHERE active_realm_id = %u", realmID);
 
     return ShowAccountListHelper(result, &limit);
 }

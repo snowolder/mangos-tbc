@@ -32,13 +32,14 @@
 #include "Globals/ObjectMgr.h"
 #include "Policies/Lock.h"
 
+#include <utility>
 #include <vector>
 #include <string>
 
 /// RASocket constructor
 RASocket::RASocket(boost::asio::io_service& service, std::function<void(Socket*)> closeHandler) :
-    m_secure(sConfig.GetBoolDefault("RA.Secure", true)), MaNGOS::Socket(service, closeHandler),
-    m_authLevel(AuthLevel::None), m_accountId(0), m_accountLevel(AccountTypes::SEC_PLAYER)
+    MaNGOS::Socket(service, std::move(closeHandler)), m_secure(sConfig.GetBoolDefault("RA.Secure", true)),
+    m_authLevel(AuthLevel::None), m_accountLevel(AccountTypes::SEC_PLAYER), m_accountId(0)
 {
     if (sConfig.IsSet("RA.Stricted"))
     {
@@ -66,7 +67,7 @@ bool RASocket::Open()
     ///- print Motd
     Send(sWorld.GetMotd());
     Send("\r\n");
-    Send(sObjectMgr.GetMangosStringForDBCLocale(LANG_RA_USER));
+    Send(sObjectMgr.GetMangosStringForDbcLocale(LANG_RA_USER));
 
     return true;
 }
@@ -123,7 +124,7 @@ bool RASocket::HandleInput()
                     return false;
 
                 Send("\r\n");
-                Send(sObjectMgr.GetMangosStringForDBCLocale(LANG_RA_USER));
+                Send(sObjectMgr.GetMangosStringForDbcLocale(LANG_RA_USER));
                 break;
             }
 
@@ -139,7 +140,7 @@ bool RASocket::HandleInput()
                     return false;
 
                 Send("\r\n");
-                Send(sObjectMgr.GetMangosStringForDBCLocale(LANG_RA_USER));
+                Send(sObjectMgr.GetMangosStringForDbcLocale(LANG_RA_USER));
                 break;
             }
 
@@ -148,7 +149,7 @@ bool RASocket::HandleInput()
                 m_accountLevel = SEC_CONSOLE;
 
             m_authLevel = AuthLevel::HaveUsername;
-            Send(sObjectMgr.GetMangosStringForDBCLocale(LANG_RA_PASS));
+            Send(sObjectMgr.GetMangosStringForDbcLocale(LANG_RA_PASS));
             break;
         }
         ///<li> If the input is '<password>' (and the user already gave his username)
@@ -173,7 +174,7 @@ bool RASocket::HandleInput()
                     return false;
 
                 Send("\r\n");
-                Send(sObjectMgr.GetMangosStringForDBCLocale(LANG_RA_PASS));
+                Send(sObjectMgr.GetMangosStringForDbcLocale(LANG_RA_PASS));
             }
             break;
         }
@@ -200,7 +201,7 @@ bool RASocket::HandleInput()
         default:
             return false;
             ///</ul>
-    };
+    }
 
     m_input.clear();
 

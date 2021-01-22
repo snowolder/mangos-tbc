@@ -24,6 +24,7 @@
 #include <G3D/Vector3.h>
 
 #include <unordered_map>
+#include <mutex>
 
 //===========================================================
 
@@ -51,7 +52,7 @@ namespace VMAP
         public:
             ManagedModel() : iModel(nullptr), iRefCount(0) {}
             void setModel(WorldModel* model) { iModel = model; }
-            WorldModel* getModel() { return iModel; }
+            WorldModel* getModel() const { return iModel; }
             void incRefCount() { ++iRefCount; }
             int decRefCount() { return --iRefCount; }
         protected:
@@ -64,6 +65,10 @@ namespace VMAP
 
     class VMapManager2 : public IVMapManager
     {
+        private:
+            std::mutex m_vmStaticMapMutex;
+            std::mutex m_vmModelMutex;
+
         protected:
             // Tree to check collision
             ModelFileMap iLoadedModelFiles;
@@ -81,11 +86,12 @@ namespace VMAP
             ~VMapManager2();
 
             VMAPLoadResult loadMap(const char* pBasePath, unsigned int pMapId, int x, int y) override;
+            bool IsTileLoaded(uint32 mapId, uint32 x, uint32 y) const override;
 
             void unloadMap(unsigned int pMapId, int x, int y) override;
             void unloadMap(unsigned int pMapId) override;
 
-            bool isInLineOfSight(unsigned int pMapId, float x1, float y1, float z1, float x2, float y2, float z2) override;
+            bool isInLineOfSight(unsigned int pMapId, float x1, float y1, float z1, float x2, float y2, float z2, bool ignoreM2Model) override;
             /**
             fill the hit pos and return true, if an object was hit
             */
@@ -95,7 +101,7 @@ namespace VMAP
             bool processCommand(char* /*pCommand*/) override { return false; }      // for debug and extensions
 
             bool getAreaInfo(unsigned int pMapId, float x, float y, float& z, uint32& flags, int32& adtId, int32& rootId, int32& groupId) const override;
-            bool GetLiquidLevel(uint32 pMapId, float x, float y, float z, uint8 ReqLiquidType, float& level, float& floor, uint32& type) const override;
+            bool GetLiquidLevel(uint32 pMapId, float x, float y, float z, uint8 ReqLiquidTypeMask, float& level, float& floor, uint32& type) const override;
 
             WorldModel* acquireModelInstance(const std::string& basepath, const std::string& filename);
             void releaseModelInstance(const std::string& filename);

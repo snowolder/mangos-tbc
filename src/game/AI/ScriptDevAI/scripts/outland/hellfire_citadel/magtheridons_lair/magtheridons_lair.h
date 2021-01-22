@@ -14,6 +14,7 @@ enum
 
     NPC_MAGTHERIDON             = 17257,
     NPC_CHANNELER               = 17256,
+    NPC_BURNING_ABYSSAL         = 17454,
 
     GO_MANTICRON_CUBE           = 181713,
     GO_DOODAD_HF_MAG_DOOR01     = 183847,
@@ -46,7 +47,7 @@ class instance_magtheridons_lair : public ScriptedInstance
         void SetData(uint32 uiType, uint32 uiData) override;
         uint32 GetData(uint32 uiType) const override;
 
-        void Update(uint32 uiDiff) override;
+        void Update(const uint32 diff) override;
 
     private:
         uint32 m_auiEncounter[MAX_ENCOUNTER];

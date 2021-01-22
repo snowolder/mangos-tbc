@@ -26,7 +26,7 @@ mob_webbed_creature
 npc_demolitionist_legoso
 EndContentData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "AI/ScriptDevAI/base/escort_ai.h"
 
 /*######
@@ -67,11 +67,12 @@ struct mob_webbed_creatureAI : public Scripted_NoMovementAI
         }
 
         if (uiSpawnCreatureEntry)
-            m_creature->SummonCreature(uiSpawnCreatureEntry, 0.0f, 0.0f, 0.0f, m_creature->GetOrientation(), TEMPSPAWN_TIMED_OOC_DESPAWN, 25000);
+            if (Creature* spawnedCreature = m_creature->SummonCreature(uiSpawnCreatureEntry, 0.0f, 0.0f, 0.0f, m_creature->GetOrientation(), TEMPSPAWN_TIMED_OOC_DESPAWN, 25000))
+                spawnedCreature->GetMotionMaster()->MoveRandomAroundPoint(spawnedCreature->GetPositionX(), spawnedCreature->GetPositionY(), spawnedCreature->GetPositionZ(), 5.f); // Needed because one or more of the spawned creatures has MovementType 2 by default, causing them to go flying to the first default waypoint
     }
 };
 
-CreatureAI* GetAI_mob_webbed_creature(Creature* pCreature)
+UnitAI* GetAI_mob_webbed_creature(Creature* pCreature)
 {
     return new mob_webbed_creatureAI(pCreature);
 }
@@ -183,7 +184,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
 
     void Reset() override { }
 
-    void ReceiveAIEvent(AIEventType eventType, Creature* pSender, Unit* pInvoker, uint32 uiMiscValue) override
+    void ReceiveAIEvent(AIEventType eventType, Unit* pSender, Unit* pInvoker, uint32 uiMiscValue) override
     {
         // start quest
         if (eventType == AI_EVENT_START_ESCORT && pInvoker->GetTypeId() == TYPEID_PLAYER)
@@ -202,7 +203,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
     {
         switch (uiWP)
         {
-            case 23:
+            case 24:
                 DoScriptText(SAY_ESCORT_LEGOSO_2, m_creature);
                 break;
         }
@@ -212,43 +213,43 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
     {
         switch (uiWP)
         {
-            case 22:
+            case 23:
                 DoScriptText(SAY_ESCORT_LEGOSO_1, m_creature);
                 break;
-            case 23:
+            case 24:
                 // prepare first event
                 SetEscortPaused(true);
                 m_creature->SetFacingTo(1.334f);
                 m_creature->SetStandState(UNIT_STAND_STATE_KNEEL);
                 StartNextDialogueText(POINT_ID_EXPLOSIVES_1);
                 break;
-            case 25:
+            case 26:
                 // countdown for first event
                 SetEscortPaused(true);
                 m_creature->SetFacingTo(1.099f);
                 StartNextDialogueText(POINT_ID_COUNT_START);
                 break;
-            case 33:
+            case 34:
                 m_creature->SetFacingTo(0.942f);
                 StartNextDialogueText(SAY_ESCORT_LEGOSO_5);
                 break;
-            case 35:
+            case 36:
                 m_creature->SetFacingTo(0.862f);
                 StartNextDialogueText(SAY_ESCORT_LEGOSO_7);
                 break;
-            case 37:
+            case 38:
                 // prepare second event
                 SetEscortPaused(true);
                 m_creature->SetFacingTo(5.961f);
                 m_creature->SetStandState(UNIT_STAND_STATE_KNEEL);
                 StartNextDialogueText(POINT_ID_EXPLOSIVES_5);
                 break;
-            case 38:
+            case 39:
                 // countdown for second event
                 m_creature->SetFacingTo(5.654f);
                 StartNextDialogueText(POINT_ID_COUNT_START);
                 break;
-            case 39:
+            case 40:
                 SetEscortPaused(true);
                 StartNextDialogueText(SAY_LEGOSO_AGGRO);
                 break;
@@ -385,7 +386,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
                 m_creature->HandleEmote(EMOTE_ONESHOT_CHEER_NOSHEATHE);
                 // complete quest
                 if (Player* pPlayer = GetPlayerForEscort())
-                    pPlayer->GroupEventHappens(QUEST_ENDING_THEIR_WORLD, m_creature);
+                    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_ENDING_THEIR_WORLD, m_creature);
                 break;
             case POINT_ID_EXPLOSIVES_9:
                 // event complete
@@ -399,7 +400,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
         if (uiEntry == NPC_LEGOSO)
             return m_creature;
 
-        return NULL;
+        return nullptr;
     }
 
     void UpdateEscortAI(const uint32 uiDiff) override
@@ -407,7 +408,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
         DialogueUpdate(uiDiff);
 
         // Combat check
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
         // ToDo: research if there are any abilities involved
@@ -416,7 +417,7 @@ struct npc_demolitionist_legosoAI : public npc_escortAI, private DialogueHelper
     }
 };
 
-CreatureAI* GetAI_npc_demolitionist_legoso(Creature* pCreature)
+UnitAI* GetAI_npc_demolitionist_legoso(Creature* pCreature)
 {
     return new npc_demolitionist_legosoAI(pCreature);
 }
@@ -431,9 +432,7 @@ bool QuestAccept_npc_demolitionist_legoso(Player* pPlayer, Creature* pCreature, 
 
 void AddSC_bloodmyst_isle()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "mob_webbed_creature";
     pNewScript->GetAI = &GetAI_mob_webbed_creature;
     pNewScript->RegisterSelf();

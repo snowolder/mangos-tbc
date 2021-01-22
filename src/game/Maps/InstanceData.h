@@ -21,6 +21,7 @@
 
 #include "Common.h"
 #include "Entities/ObjectGuid.h"
+#include "ByteBuffer.h"
 
 class Map;
 class Unit;
@@ -28,6 +29,7 @@ class Player;
 class GameObject;
 class Creature;
 class WorldObject;
+class ChatHandler;
 
 enum InstanceConditionIDs                                   // Suggested values used with CONDITION_INSTANCE_SCRIPT for some generic uses
 {
@@ -37,6 +39,8 @@ enum InstanceConditionIDs                                   // Suggested values 
     INSTANCE_CONDITION_ID_HARD_MODE_2       = 2,
     INSTANCE_CONDITION_ID_HARD_MODE_3       = 3,
     INSTANCE_CONDITION_ID_HARD_MODE_4       = 4,
+    INSTANCE_CONDITION_ID_HARD_MODE_5       = 5,
+    INSTANCE_CONDITION_ID_HARD_MODE_6       = 6,
 
     // to check for which team the instance is doing scripts
     INSTANCE_CONDITION_ID_TEAM_HORDE        = 67,
@@ -45,6 +49,38 @@ enum InstanceConditionIDs                                   // Suggested values 
     // to check water event in SSC
     INSTANCE_CONDITION_ID_LURKER            = 21217,
     INSTANCE_CONDITION_ID_SCALDING_WATER    = 37284,
+
+    INSTANCE_CONDITION_ID_SOCRETHAR_GOSSIP  = 8215,
+
+    // Gossip conditions for Hyjal Summit
+    INSTANCE_CONDITION_ID_WINTERCHILL_STARTABLE = 17767,
+    INSTANCE_CONDITION_ID_ANETHERON_STARTABLE = 17808,
+    INSTANCE_CONDITION_ID_ANETHERON_DONE = 17772,
+    INSTANCE_CONDITION_ID_KAZROGAL_STARTABLE = 17888,
+    INSTANCE_CONDITION_ID_AZGALOR_STARTABLE = 17842,
+    INSTANCE_CONDITION_ID_AZGALOR_DONE = 17852,
+    INSTANCE_CONDITION_ID_ARCHIMONDE_STARTABLE = 17968,
+    INSTANCE_CONDITION_ID_ARCHIMONDE_DONE = 17948,
+    INSTANCE_CONDITION_ID_WAVES_INPROGRESS = 17895,
+
+    INSTANCE_CONDITION_ID_SAAT_BEACON               = 20201,
+
+    INSTANCE_CONDITION_ID_BASHIR_FLYING             = 87361,
+    INSTANCE_CONDITION_ID_BASHIR_IN_PROGRESS        = 87362,
+    
+    // Shade of the Horseman village attack event
+    INSTANCE_CONDITION_ID_FIRE_BRIGADE_PRACTICE_GOLDSHIRE   = 18000, // must be first and all subsequent numbers matching ShadeOfTheHorsemanVillages enum
+    INSTANCE_CONDITION_ID_FIRE_BRIGADE_PRACTICE_KHARANOS    = 18001,
+    INSTANCE_CONDITION_ID_FIRE_BRIGADE_PRACTICE_AZURE_WATCH = 18002,
+    INSTANCE_CONDITION_ID_FIRE_TRAINING_BRILL               = 18003,
+    INSTANCE_CONDITION_ID_FIRE_TRAINING_RAZOR_HILL          = 18004,
+    INSTANCE_CONDITION_ID_FIRE_TRAINING_FALCONWING          = 18005,
+    INSTANCE_CONDITION_ID_STOP_THE_FIRES_ALLIANCE           = 18006,
+    INSTANCE_CONDITION_ID_STOP_THE_FIRES_HORDE              = 18007,
+    INSTANCE_CONDITION_ID_THE_HEADLESS_HORSEMAN_ALLIANCE    = 18008,
+    INSTANCE_CONDITION_ID_THE_HEADLESS_HORSEMAN_HORDE       = 18009,
+    INSTANCE_CONDITION_ID_LET_THE_FIRES_COME_ALLIANCE       = 18010,
+    INSTANCE_CONDITION_ID_LET_THE_FIRES_COME_HORDE          = 18011,
 };
 
 class InstanceData
@@ -68,7 +104,7 @@ class InstanceData
         void SaveToDB() const;
 
         // Called every map update
-        virtual void Update(uint32 /*diff*/) {}
+        virtual void Update(const uint32 /*diff*/) {}
 
         // This is to prevent players from entering during boss encounters.
         virtual bool IsEncounterInProgress() const { return false; };
@@ -88,8 +124,14 @@ class InstanceData
         // Called when a gameobject is created
         virtual void OnObjectCreate(GameObject*) {}
 
+        // Called when a gameobject is spawned into map
+        virtual void OnObjectSpawn(GameObject*) {}
+
         // called on creature creation
         virtual void OnCreatureCreate(Creature* /*creature*/) {}
+
+        // called on creature spawn/respawn
+        virtual void OnCreatureRespawn(Creature* /*creature*/) {}
 
         // called on creature enter combat
         virtual void OnCreatureEnterCombat(Creature* /*creature*/) {}
@@ -122,6 +164,26 @@ class InstanceData
         // This is used for such things are heroic loot
         // See ObjectMgr.h enum ConditionSource for possible values of conditionSourceType
         virtual bool CheckConditionCriteriaMeet(Player const* source, uint32 instance_condition_id, WorldObject const* conditionSource, uint32 conditionSourceType) const;
+
+        virtual void FillInitialWorldStates(ByteBuffer& /*data*/, uint32& /*count*/, uint32 /*zoneId*/, uint32 /*areaId*/) {}
+
+        // helper functions for world state list fill
+        inline void FillInitialWorldStateData(ByteBuffer& data, uint32& count, uint32 state, uint32 value)
+        {
+            data << uint32(state);
+            data << uint32(value);
+            ++count;
+        }
+
+        inline void FillInitialWorldStateData(ByteBuffer& data, uint32& count, uint32 state, int32 value)
+        {
+            data << uint32(state);
+            data << int32(value);
+            ++count;
+        }
+
+        virtual void ShowChatCommands(ChatHandler* /*handler*/) {}
+        virtual void ExecuteChatCommand(ChatHandler* /*handler*/, char* /*args*/) {}
 };
 
 #endif

@@ -64,10 +64,8 @@ namespace Movement
                 break;
         }
 
-        // add fake Enter_Cycle flag - needed for client-side cyclic movement (client will erase first spline vertex after first cycle done)
-        splineflags.enter_cycle = move_spline.isCyclic();
         // add fake Runmode flag - client has strange issues without that flag
-        data << uint32(splineflags & ~MoveSplineFlag::Mask_No_Monster_Move | MoveSplineFlag::Runmode);
+        data << uint32((splineflags & ~MoveSplineFlag::Mask_No_Monster_Move) | MoveSplineFlag::Runmode);
         data << move_spline.Duration();
     }
 
@@ -81,11 +79,10 @@ namespace Movement
         if (last_idx > 1)
         {
             Vector3 middle = (real_path[0] + real_path[last_idx]) / 2.f;
-            Vector3 offset;
             // first and last points already appended
             for (uint32 i = 1; i < last_idx; ++i)
             {
-                offset = middle - real_path[i];
+                Vector3 offset = middle - real_path[i];
                 data.appendPackXYZ(offset.x, offset.y, offset.z);
             }
         }
@@ -98,12 +95,11 @@ namespace Movement
         data.append<Vector3>(&spline.getPoint(2), count);
     }
 
-    void WriteCatmullRomCyclicPath(const Spline<int32>& spline, ByteBuffer& data)
+    void WriteCatmullRomCyclicPath(Spline<int32> const& spline, ByteBuffer& data)
     {
-        uint32 count = spline.getPointCount() - 3;
-        data << uint32(count + 1);
-        data << spline.getPoint(1); // fake point, client will erase it from the spline after first cycle done
-        data.append<Vector3>(&spline.getPoint(1), count);
+        uint32 count = spline.getPointCount() - 4;
+        data << count;
+        data.append<Vector3>(&spline.getPoint(2), count);
     }
 
     void PacketBuilder::WriteMonsterMove(const MoveSpline& move_spline, WorldPacket& data)

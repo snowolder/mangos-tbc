@@ -18,11 +18,14 @@
 SDName: Boss_Terestian_Illhoof
 SD%Complete: 100
 SDComment:
+ILLHOOF_ACTION_SUMMON_KILREK 45sec post 2.1, else 30
+ILLHOOF_ACTION_SACRIFICE random topaggro + 1 post 2.1. else 0
 SDCategory: Karazhan
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "karazhan.h"
+#include "AI/ScriptDevAI/base/CombatAI.h"
 
 enum
 {
@@ -34,6 +37,7 @@ enum
     SAY_SACRIFICE2              = -1532070,
     SAY_SUMMON1                 = -1532071,
     SAY_SUMMON2                 = -1532072,
+    SAY_KILREK_DEATH            = -1532136,
 
     // spells
     SPELL_SUMMON_DEMONCHAINS    = 30120,                    // Summons demonic chains that maintain the ritual of sacrifice.
@@ -51,7 +55,7 @@ enum
     SPELL_SUMMON_FIENDISH_IMP   = 30184,
 
     // Kilrek
-    SPELL_BROKEN_PACT           = 30065,                    // All damage taken increased by 25%.
+    SPELL_BROKEN_PACT           = 30065,                    // All damage taken increased by 25%, TODO: Sends AI event for Imp Timer
 
     // summoned npcs
     NPC_DEMONCHAINS             = 17248,
@@ -60,62 +64,139 @@ enum
     NPC_KILREK                  = 17229
 };
 
-struct boss_terestianAI : public ScriptedAI
+enum IllhoofActions
 {
-    boss_terestianAI(Creature* pCreature) : ScriptedAI(pCreature)
+    ILLHOOF_ACTION_SUMMON_KILREK,
+    ILLHOOF_ACTION_SACRIFICE,
+    ILLHOOF_ACTION_SHADOWBOLT,
+    ILLHOOF_ACTION_SUMMON,
+    ILLHOOF_ACTION_BERSERK,
+    ILLHOOF_ACTION_MAX,
+};
+
+struct boss_terestianAI : public CombatAI
+{
+    boss_terestianAI(Creature* creature) : CombatAI(creature, ILLHOOF_ACTION_MAX), m_instance(static_cast<ScriptedInstance*>(creature->GetInstanceData()))
     {
-        m_pInstance = (ScriptedInstance*)pCreature->GetInstanceData();
-        Reset();
+        AddCombatAction(ILLHOOF_ACTION_SUMMON_KILREK, true);
+        AddCombatAction(ILLHOOF_ACTION_SACRIFICE, 30000, 35000);
+        AddCombatAction(ILLHOOF_ACTION_SHADOWBOLT, 5000, 7000);
+        AddCombatAction(ILLHOOF_ACTION_SUMMON, 10000u);
+        AddCombatAction(ILLHOOF_ACTION_BERSERK, uint32(10 * MINUTE * IN_MILLISECONDS));
     }
 
-    ScriptedInstance* m_pInstance;
+    ScriptedInstance* m_instance;
 
+    ObjectGuid m_kilrekGuid;
     ObjectGuid m_sacrificeGuid;
-
-    uint32 m_uiSummonKilrekTimer;
-    uint32 m_uiSacrificeTimer;
-    uint32 m_uiShadowboltTimer;
-    uint32 m_uiSummonTimer;
-    uint32 m_uiBerserkTimer;
-
+    ObjectGuid m_chainsGuid;
+    
     bool m_bSummonedPortals;
 
     void Reset() override
     {
-        m_uiSummonKilrekTimer   = 0;
-        m_uiSacrificeTimer      = 30000;
-        m_uiShadowboltTimer     = 5000;
-        m_uiSummonTimer         = 10000;
-        m_uiBerserkTimer        = 10 * MINUTE * IN_MILLISECONDS;
+        CombatAI::Reset();
 
-        m_bSummonedPortals      = false;
+        m_bSummonedPortals = false;
     }
 
-    void Aggro(Unit* /*pWho*/) override
+    uint32 GetSubsequentActionTimer(uint32 id)
+    {
+        switch (id)
+        {
+#ifdef PRENERF_2_0_3
+            case ILLHOOF_ACTION_SUMMON_KILREK: return 30000;
+#else
+            case ILLHOOF_ACTION_SUMMON_KILREK: return 45000;
+#endif
+            case ILLHOOF_ACTION_SACRIFICE: return urand(40000, 50000);
+            case ILLHOOF_ACTION_SHADOWBOLT: return urand(6000, 16000);
+            default: return 0; // never occurs but for compiler
+        }
+    }
+
+    void ExecuteAction(uint32 action) override
+    {
+        switch (action)
+        {
+            case ILLHOOF_ACTION_SUMMON_KILREK:
+            {
+                DoCastSpellIfCan(m_creature, SPELL_SUMMON_IMP);
+                DisableCombatAction(action);
+                return;
+            }
+            case ILLHOOF_ACTION_SACRIFICE:
+            {
+#ifdef PRENERF_2_0_3
+                if (Unit* target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 0, SPELL_SACRIFICE, SELECT_FLAG_PLAYER))
+#else
+                if (Unit* target = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, SPELL_SACRIFICE, SELECT_FLAG_PLAYER))
+#endif
+                {
+                    if (DoCastSpellIfCan(target, SPELL_SACRIFICE) == CAST_OK)
+                    {
+                        DoCastSpellIfCan(m_creature, SPELL_SUMMON_DEMONCHAINS, CAST_TRIGGERED);
+                        DoScriptText(urand(0, 1) ? SAY_SACRIFICE1 : SAY_SACRIFICE2, m_creature);
+                        m_sacrificeGuid = target->GetObjectGuid();
+                    }
+                }
+                ResetCombatAction(action, GetSubsequentActionTimer(action));
+                return;
+            }
+            case ILLHOOF_ACTION_SHADOWBOLT:
+            {
+                DoCastSpellIfCan(m_creature->GetVictim(), SPELL_SHADOW_BOLT);
+                ResetCombatAction(action, GetSubsequentActionTimer(action));
+                return;
+            }
+            case ILLHOOF_ACTION_SUMMON:
+            {
+                if (DoCastSpellIfCan(nullptr, SPELL_FIENDISH_PORTAL) == CAST_OK)
+                    DoScriptText(urand(0, 1) ? SAY_SUMMON1 : SAY_SUMMON2, m_creature);
+                DisableCombatAction(action);
+                return;
+            }
+            case ILLHOOF_ACTION_BERSERK:
+            {
+                DoCastSpellIfCan(nullptr, SPELL_BERSERK);
+                DisableCombatAction(action);
+                return;
+            }
+        }
+    }
+
+    void Aggro(Unit* /*who*/) override
     {
         DoScriptText(SAY_AGGRO, m_creature);
 
-        if (!m_creature->GetPet())
-            DoCastSpellIfCan(m_creature, SPELL_SUMMON_IMP);
-
-        if (m_pInstance)
-            m_pInstance->SetData(TYPE_TERESTIAN, IN_PROGRESS);
+        if (m_instance)
+            m_instance->SetData(TYPE_TERESTIAN, IN_PROGRESS);
     }
 
-    void KilledUnit(Unit* /*pVictim*/) override
+    void KilledUnit(Unit* /*victim*/) override
     {
         DoScriptText(urand(0, 1) ? SAY_SLAY1 : SAY_SLAY2, m_creature);
     }
 
     void JustReachedHome() override
     {
-        if (m_pInstance)
-            m_pInstance->SetData(TYPE_TERESTIAN, FAIL);
+        Creature* kilrek = m_creature->GetMap()->GetAnyTypeCreature(m_kilrekGuid);
+        if (!kilrek || !kilrek->IsAlive())
+            DoCastSpellIfCan(m_creature, SPELL_SUMMON_IMP);
+
+        if (m_instance)
+            m_instance->SetData(TYPE_TERESTIAN, FAIL);
     }
 
-    void JustSummoned(Creature* pSummoned) override
+    void JustRespawned() override
     {
-        switch (pSummoned->GetEntry())
+        DoCastSpellIfCan(m_creature, SPELL_SUMMON_IMP);
+        Reset();
+    }
+    
+    void JustSummoned(Creature* summoned) override
+    {
+        switch (summoned->GetEntry())
         {
             case NPC_PORTAL:
                 if (!m_bSummonedPortals)
@@ -125,22 +206,30 @@ struct boss_terestianAI : public ScriptedAI
                 }
                 break;
             case NPC_KILREK:
+                m_kilrekGuid = summoned->GetObjectGuid();
+                if (m_creature->IsInCombat())
+                {
+                    summoned->SetInCombatWithZone();
+                    summoned->AI()->AttackClosestEnemy();
+                }
                 m_creature->RemoveAurasDueToSpell(SPELL_BROKEN_PACT);
-                pSummoned->SetInCombatWithZone();
                 break;
             case NPC_DEMONCHAINS:
-                pSummoned->CastSpell(pSummoned, SPELL_DEMON_CHAINS, TRIGGERED_NONE);
+                m_chainsGuid = summoned->GetObjectGuid();
+                summoned->AI()->SetReactState(REACT_PASSIVE);
+                summoned->CastSpell(summoned, SPELL_DEMON_CHAINS, TRIGGERED_NONE);
                 break;
         }
     }
 
-    void SummonedCreatureJustDied(Creature* pSummoned) override
+    void SummonedCreatureJustDied(Creature* summoned) override
     {
-        switch (pSummoned->GetEntry())
+        switch (summoned->GetEntry())
         {
             case NPC_KILREK:
-                pSummoned->CastSpell(m_creature, SPELL_BROKEN_PACT, TRIGGERED_OLD_TRIGGERED);
-                m_uiSummonKilrekTimer = 30000;
+                DoScriptText(SAY_KILREK_DEATH, summoned, summoned);
+                summoned->CastSpell(m_creature, SPELL_BROKEN_PACT, TRIGGERED_OLD_TRIGGERED);
+                ResetTimer(ILLHOOF_ACTION_SUMMON_KILREK, GetSubsequentActionTimer(ILLHOOF_ACTION_SUMMON_KILREK));
                 break;
             case NPC_DEMONCHAINS:
                 if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_sacrificeGuid))
@@ -149,79 +238,21 @@ struct boss_terestianAI : public ScriptedAI
         }
     }
 
-    void JustDied(Unit* /*pKiller*/) override
+    void JustDied(Unit* /*killer*/) override
     {
         DoScriptText(SAY_DEATH, m_creature);
 
-        if (m_pInstance)
-            m_pInstance->SetData(TYPE_TERESTIAN, DONE);
+        if (m_instance)
+            m_instance->SetData(TYPE_TERESTIAN, DONE);
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        // Respawn Kilrek if killed
-        if (m_uiSummonKilrekTimer)
-        {
-            if (m_uiSummonKilrekTimer <= uiDiff)
-            {
-                if (DoCastSpellIfCan(m_creature, SPELL_SUMMON_IMP) == CAST_OK)
-                    m_uiSummonKilrekTimer = 0;
-            }
-            else
-                m_uiSummonKilrekTimer -= uiDiff;
-        }
-
-        if (!m_creature->SelectHostileTarget() || !m_creature->getVictim())
+        if (!m_creature->SelectHostileTarget() || !m_creature->GetVictim())
             return;
 
-        if (m_uiSacrificeTimer < uiDiff)
-        {
-            if (Unit* pTarget = m_creature->SelectAttackingTarget(ATTACKING_TARGET_RANDOM, 1, SPELL_SACRIFICE, SELECT_FLAG_PLAYER))
-            {
-                if (DoCastSpellIfCan(pTarget, SPELL_SACRIFICE) == CAST_OK)
-                {
-                    DoCastSpellIfCan(m_creature, SPELL_SUMMON_DEMONCHAINS, CAST_TRIGGERED);
-                    DoScriptText(urand(0, 1) ? SAY_SACRIFICE1 : SAY_SACRIFICE2, m_creature);
-                    m_sacrificeGuid = pTarget->GetObjectGuid();
-                    m_uiSacrificeTimer = 43000;
-                }
-            }
-        }
-        else
-            m_uiSacrificeTimer -= uiDiff;
-
-        if (m_uiShadowboltTimer < uiDiff)
-        {
-            if (DoCastSpellIfCan(m_creature->getVictim(), SPELL_SHADOW_BOLT) == CAST_OK)
-                m_uiShadowboltTimer = 10000;
-        }
-        else
-            m_uiShadowboltTimer -= uiDiff;
-
-        if (m_uiSummonTimer)
-        {
-            if (m_uiSummonTimer <= uiDiff)
-            {
-                if (DoCastSpellIfCan(m_creature, SPELL_FIENDISH_PORTAL) == CAST_OK)
-                {
-                    DoScriptText(urand(0, 1) ? SAY_SUMMON1 : SAY_SUMMON2, m_creature);
-                    m_uiSummonTimer = 0;
-                }
-            }
-            else
-                m_uiSummonTimer -= uiDiff;
-        }
-
-        if (m_uiBerserkTimer)
-        {
-            if (m_uiBerserkTimer <= uiDiff)
-            {
-                if (DoCastSpellIfCan(m_creature, SPELL_BERSERK) == CAST_OK)
-                    m_uiBerserkTimer = 0;
-            }
-            else
-                m_uiBerserkTimer -= uiDiff;
-        }
+        UpdateTimers(uiDiff, m_creature->IsInCombat());
+        ExecuteActions();
 
         DoMeleeAttackIfReady();
     }
@@ -229,7 +260,7 @@ struct boss_terestianAI : public ScriptedAI
 
 struct npc_fiendish_portalAI : public ScriptedAI
 {
-    npc_fiendish_portalAI(Creature* pCreature) : ScriptedAI(pCreature) { Reset(); }
+    npc_fiendish_portalAI(Creature* creature) : ScriptedAI(creature) { Reset(); }
 
     uint32 m_uiSummonTimer;
 
@@ -238,15 +269,14 @@ struct npc_fiendish_portalAI : public ScriptedAI
         m_uiSummonTimer = 5000;
     }
 
-    void JustSummoned(Creature* pSummoned) override
+    void JustSummoned(Creature* summoned) override
     {
-        pSummoned->ApplySpellImmune(0, IMMUNITY_SCHOOL, SPELL_SCHOOL_MASK_FIRE, true);
-        pSummoned->SetInCombatWithZone();
+        summoned->SetInCombatWithZone();
     }
 
     void UpdateAI(const uint32 uiDiff) override
     {
-        if (m_uiSummonTimer < uiDiff)
+        if (m_uiSummonTimer <= uiDiff)
         {
             if (DoCastSpellIfCan(m_creature, SPELL_SUMMON_FIENDISH_IMP) == CAST_OK)
                 m_uiSummonTimer = 5000;
@@ -256,48 +286,37 @@ struct npc_fiendish_portalAI : public ScriptedAI
     }
 };
 
-// TODO Remove this 'script' when combat can be proper prevented from core-side
-struct mob_demon_chainAI : public Scripted_NoMovementAI
+struct Sacrifice : public AuraScript
 {
-    mob_demon_chainAI(Creature* pCreature) : Scripted_NoMovementAI(pCreature) { Reset(); }
-
-    void Reset() override { }
-    void MoveInLineOfSight(Unit* /*pWho*/) override { }
-    void AttackStart(Unit* /*pWho*/) override { }
-    void UpdateAI(const uint32 /*uiDiff*/) override { }
+    void OnApply(Aura* aura, bool apply) const override
+    {
+        if (!apply)
+        {
+            if (Unit* caster = aura->GetCaster())
+            {
+                if (boss_terestianAI* ai = dynamic_cast<boss_terestianAI*>(caster->AI()))
+                {
+                    if (Creature* chains = caster->GetMap()->GetCreature(ai->m_chainsGuid))
+                    {
+                        chains->ForcedDespawn();
+                    }
+                }
+            }
+        }
+    }
 };
-
-CreatureAI* GetAI_boss_terestian_illhoof(Creature* pCreature)
-{
-    return new boss_terestianAI(pCreature);
-}
-
-CreatureAI* GetAI_npc_fiendish_portal(Creature* pCreature)
-{
-    return new npc_fiendish_portalAI(pCreature);
-}
-
-CreatureAI* GetAI_mob_demon_chain(Creature* pCreature)
-{
-    return new mob_demon_chainAI(pCreature);
-}
 
 void AddSC_boss_terestian_illhoof()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "boss_terestian_illhoof";
-    pNewScript->GetAI = &GetAI_boss_terestian_illhoof;
+    pNewScript->GetAI = &GetNewAIInstance<boss_terestianAI>;
     pNewScript->RegisterSelf();
 
     pNewScript = new Script;
     pNewScript->Name = "npc_fiendish_portal";
-    pNewScript->GetAI = &GetAI_npc_fiendish_portal;
+    pNewScript->GetAI = &GetNewAIInstance<npc_fiendish_portalAI>;
     pNewScript->RegisterSelf();
 
-    pNewScript = new Script;
-    pNewScript->Name = "mob_demon_chain";
-    pNewScript->GetAI = &GetAI_mob_demon_chain;
-    pNewScript->RegisterSelf();
+    RegisterAuraScript<Sacrifice>("spell_sacrifice");
 }

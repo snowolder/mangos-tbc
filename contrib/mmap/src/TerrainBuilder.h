@@ -20,7 +20,6 @@
 #define _MMAP_TERRAIN_BUILDER_H
 
 #include "MMapCommon.h"
-#include "MangosMap.h"
 #include "MotionGenerators/MoveMapSharedDefines.h"
 
 #include "WorldModel.h"
@@ -28,8 +27,6 @@
 #include "G3D/Array.h"
 #include "G3D/Vector3.h"
 #include "G3D/Matrix3.h"
-
-using namespace MaNGOS;
 
 namespace MMAP
 {
@@ -52,6 +49,7 @@ namespace MMAP
     static const int V9_SIZE_SQ = V9_SIZE * V9_SIZE;
     static const int V8_SIZE = 128;
     static const int V8_SIZE_SQ = V8_SIZE * V8_SIZE;
+
     static const float GRID_SIZE = 533.33333f;
     static const float GRID_PART_SIZE = GRID_SIZE / V8_SIZE;
 
@@ -62,7 +60,7 @@ namespace MMAP
     // see following files:
     // contrib/extractor/system.cpp
     // src/game/GridMap.cpp
-    static char const* MAP_VERSION_MAGIC = "s1.3";
+    static char const* MAP_VERSION_MAGIC = "s1.4";
 
     struct MeshData
     {

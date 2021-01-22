@@ -17,6 +17,12 @@
  */
 
 #include "NullCreatureAI.h"
+#include "Entities/Creature.h"
+
+NullCreatureAI::NullCreatureAI(Creature* creature) : CreatureAI(creature)
+{
+    m_creature->SetCanEnterCombat(false);
+}
 
 NullCreatureAI::~NullCreatureAI()
 {

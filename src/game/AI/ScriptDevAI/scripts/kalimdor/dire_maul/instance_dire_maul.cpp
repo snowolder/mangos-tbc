@@ -16,18 +16,17 @@
 
 /* ScriptData
 SDName: instance_dire_maul
-SD%Complete: 30
-SDComment: Basic Support - Most events and quest-related stuff missing
+SD%Complete: 70
+SDComment: Ogre costume suit missing for Tribute Run, Cho'Rush spells randomisation is not handled properly, Warpwood pods are not implemented, the Maul event is not handled
 SDCategory: Dire Maul
 EndScriptData */
 
-#include "AI/ScriptDevAI/include/precompiled.h"
+#include "AI/ScriptDevAI/include/sc_common.h"
 #include "dire_maul.h"
 
 instance_dire_maul::instance_dire_maul(Map* pMap) : ScriptedInstance(pMap),
     m_bWallDestroyed(false),
-    m_bDoNorthBeforeWest(false),
-    m_uiDreadsteedEventTimer(0)
+    m_bDoNorthBeforeWest(false)
 {
     Initialize();
 }
@@ -35,6 +34,27 @@ instance_dire_maul::instance_dire_maul(Map* pMap) : ScriptedInstance(pMap),
 void instance_dire_maul::Initialize()
 {
     memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
+}
+
+void instance_dire_maul::Update(uint32 uiDiff)
+{
+    if (GetData(TYPE_DREADSTEED) == IN_PROGRESS)
+    {
+        // While J'eevee is spawned, failure condition is simply no players found
+        if (Creature* imp = instance->GetCreature(m_npcEntryGuidStore[NPC_JEEVEE]))
+        {
+            if (instance->GetPlayersCountExceptGMs() == 0)
+                SetData(TYPE_DREADSTEED, FAIL);
+        }
+        else
+        {
+            GameObject* bell = instance->GetGameObject(m_goEntryGuidStore[GO_BELL_OF_DETHMOORA]);
+            GameObject* wheel = instance->GetGameObject(m_goEntryGuidStore[GO_WHEEL_OF_BLACK_MARCH]);
+            GameObject* candle = instance->GetGameObject(m_goEntryGuidStore[GO_DOOMSDAY_CANDLE]);
+            if (bell && bell->GetGoState() != GO_STATE_ACTIVE && wheel && wheel->GetGoState() != GO_STATE_ACTIVE && candle && candle->GetGoState() != GO_STATE_ACTIVE)
+                SetData(TYPE_DREADSTEED, FAIL);
+        }
+    }
 }
 
 void instance_dire_maul::OnPlayerEnter(Player* pPlayer)
@@ -69,6 +89,7 @@ void instance_dire_maul::OnCreatureCreate(Creature* pCreature)
             return;
         case NPC_IMMOLTHAR:
         case NPC_WARLOCK_DUMMY_INFERNAL:
+        case NPC_JEEVEE:
             break;
         case NPC_HIGHBORNE_SUMMONER:
             m_luiHighborneSummonerGUIDs.push_back(pCreature->GetObjectGuid());
@@ -78,6 +99,7 @@ void instance_dire_maul::OnCreatureCreate(Creature* pCreature)
         case NPC_CHORUSH:
         case NPC_KING_GORDOK:
         case NPC_CAPTAIN_KROMCRUSH:
+        case NPC_GUARD_SLIPKIK:
             break;
 
         default:
@@ -151,8 +173,17 @@ void instance_dire_maul::OnObjectCreate(GameObject* pGo)
             // exclude the central portal
             if (pGo->GetPositionZ() > -29.0f)
                 m_lDreadsteedPortalsGUIDs.push_back(pGo->GetObjectGuid());
-            return;
+            return; 
+        case GO_BELL_OF_DETHMOORA:
+        case GO_WHEEL_OF_BLACK_MARCH:
+        case GO_DOOMSDAY_CANDLE:
         case GO_WARLOCK_RITUAL_CIRCLE:
+        case GO_RITUAL_CANDLE_AURA:
+            break;
+        case GO_MOUNT_QUEST_SYMBOL1:
+        case GO_MOUNT_QUEST_SYMBOL2:
+        case GO_MOUNT_QUEST_SYMBOL3:
+            m_lRitualSymbolGUIDs.push_back(pGo->GetObjectGuid());
             break;
 
         // North
@@ -233,32 +264,6 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
         case TYPE_PRINCE:
             m_auiEncounter[uiType] = uiData;
             break;
-        case TYPE_DREADSTEED:
-            // start timer
-            if (uiData == IN_PROGRESS)
-                m_uiDreadsteedEventTimer = 390000;
-            else if (uiData == SPECIAL)
-            {
-                // set animation for next stage
-                if (GameObject* pCircle = GetSingleGameObjectFromStorage(GO_WARLOCK_RITUAL_CIRCLE))
-                    pCircle->SetGoState(GO_STATE_ACTIVE);
-
-                // despawn the controller; Inform the attackers to teleport
-                if (Creature* pDummy = GetSingleCreatureFromStorage(NPC_WARLOCK_DUMMY_INFERNAL))
-                {
-                    pDummy->AI()->SendAIEventAround(AI_EVENT_CUSTOM_EVENTAI_A, pDummy, 4000, 100.0f);
-                    pDummy->ForcedDespawn(5000);
-                }
-
-                // despawn side portals
-                for (GuidList::const_iterator itr = m_lDreadsteedPortalsGUIDs.begin(); itr != m_lDreadsteedPortalsGUIDs.end(); ++itr)
-                {
-                    if (GameObject* pGo = instance->GetGameObject(*itr))
-                        pGo->SetLootState(GO_JUST_DEACTIVATED);
-                }
-            }
-            m_auiEncounter[uiType] = uiData;
-            break;
         case TYPE_PYLON_1:
         case TYPE_PYLON_2:
         case TYPE_PYLON_3:
@@ -272,7 +277,33 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
                     ProcessForceFieldOpening();
             }
             break;
+        case TYPE_DREADSTEED:
+            m_auiEncounter[uiType] = uiData;
+            if (uiData == FAIL)
+            {
+                if (Creature* pRitual = GetSingleCreatureFromStorage(NPC_WARLOCK_DUMMY_INFERNAL))
+                    pRitual->ForcedDespawn();
 
+                for (auto portal : m_lDreadsteedPortalsGUIDs)
+                    instance->GetGameObject(portal)->SetLootState(GO_JUST_DEACTIVATED);
+
+                for (auto symbol : m_lRitualSymbolGUIDs)
+                    instance->GetGameObject(symbol)->SetLootState(GO_JUST_DEACTIVATED);
+
+                std::vector<uint32> ids = { GO_BELL_OF_DETHMOORA , GO_DOOMSDAY_CANDLE , GO_WHEEL_OF_BLACK_MARCH };
+                for (uint32 id : ids)
+                {
+                    if (GameObject* pGo = GetSingleGameObjectFromStorage(id))
+                    {
+                        pGo->SetLootState(GO_JUST_DEACTIVATED);
+                        pGo->SetRespawnDelay(1);
+                    }
+                }
+
+                if (GameObject *pGo = GetSingleGameObjectFromStorage(GO_WARLOCK_RITUAL_CIRCLE))
+                    pGo->SetLootState(GO_JUST_DEACTIVATED);
+            }
+            break;
         // North
         case TYPE_KING_GORDOK:
             m_auiEncounter[uiType] = uiData;
@@ -281,12 +312,12 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
                 // change faction to certian ogres
                 if (Creature* pOgre = GetSingleCreatureFromStorage(NPC_CAPTAIN_KROMCRUSH))
                 {
-                    if (pOgre->isAlive())
+                    if (pOgre->IsAlive())
                     {
                         pOgre->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_RESTORE_RESPAWN);
 
                         // only evade if required
-                        if (pOgre->getVictim())
+                        if (pOgre->GetVictim())
                             pOgre->AI()->EnterEvadeMode();
                     }
                 }
@@ -294,7 +325,7 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
                 if (Creature* pOgre = GetSingleCreatureFromStorage(NPC_CHORUSH))
                 {
                     // Chorush evades and yells on king death (if alive)
-                    if (pOgre->isAlive())
+                    if (pOgre->IsAlive())
                     {
                         DoScriptText(SAY_CHORUSH_KING_DEAD, pOgre);
                         pOgre->SetFactionTemporary(FACTION_FRIENDLY, TEMPFACTION_RESTORE_RESPAWN);
@@ -304,6 +335,7 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
                     // start WP movement for Mizzle; event handled by movement and gossip dbscripts
                     if (Creature* pMizzle = pOgre->SummonCreature(NPC_MIZZLE_THE_CRAFTY, afMizzleSpawnLoc[0], afMizzleSpawnLoc[1], afMizzleSpawnLoc[2], afMizzleSpawnLoc[3], TEMPSPAWN_DEAD_DESPAWN, 0, true))
                     {
+                        pMizzle->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
                         pMizzle->SetWalk(false);
                         pMizzle->GetMotionMaster()->MoveWaypoint();
                     }
@@ -314,6 +346,8 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
         case TYPE_FENGUS:
         case TYPE_SLIPKIK:
         case TYPE_KROMCRUSH:
+        case TYPE_CHORUSH:
+        case TYPE_STOMPER_KREEG:
             m_auiEncounter[uiType] = uiData;
             break;
     }
@@ -328,7 +362,8 @@ void instance_dire_maul::SetData(uint32 uiType, uint32 uiData)
                       << m_auiEncounter[6] << " " << m_auiEncounter[7] << " " << m_auiEncounter[8] << " "
                       << m_auiEncounter[9] << " " << m_auiEncounter[10] << " " << m_auiEncounter[11] << " "
                       << m_auiEncounter[12] << " " << m_auiEncounter[13] << " " << m_auiEncounter[14] << " "
-                      << m_auiEncounter[15] << " " << m_auiEncounter[16];
+                      << m_auiEncounter[15] << " " << m_auiEncounter[16] << " " << m_auiEncounter[17] << " "
+                      << m_auiEncounter[18];
 
         m_strInstData = saveStream.str();
 
@@ -388,6 +423,9 @@ void instance_dire_maul::OnCreatureDeath(Creature* pCreature)
         case NPC_IMMOLTHAR:
             SetData(TYPE_IMMOLTHAR, DONE);
             break;
+        case NPC_LORD_HELNURATH:
+            SetData(TYPE_DREADSTEED, DONE);
+            break;
 
         // North
         // - Handling of Ogre Boss (Assume boss can be handled in Acid)
@@ -406,6 +444,12 @@ void instance_dire_maul::OnCreatureDeath(Creature* pCreature)
             break;
         case NPC_CAPTAIN_KROMCRUSH:
             SetData(TYPE_KROMCRUSH, DONE);
+            break;
+        case NPC_CHORUSH:
+            SetData(TYPE_CHORUSH, DONE);
+            break;
+        case NPC_STOMPER_KREEG:
+            SetData(TYPE_STOMPER_KREEG, DONE);
             break;
     }
 }
@@ -426,15 +470,16 @@ void instance_dire_maul::Load(const char* chrIn)
                m_auiEncounter[6] >> m_auiEncounter[7] >> m_auiEncounter[8] >>
                m_auiEncounter[9] >> m_auiEncounter[10] >> m_auiEncounter[11] >>
                m_auiEncounter[12] >> m_auiEncounter[13] >> m_auiEncounter[14] >>
-               m_auiEncounter[15] >> m_auiEncounter[16];
+               m_auiEncounter[15] >> m_auiEncounter[16] >> m_auiEncounter[17] >>
+               m_auiEncounter[18];
 
     if (m_auiEncounter[TYPE_ALZZIN] >= DONE)
         m_bWallDestroyed = true;
 
-    for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
+    for (uint32& i : m_auiEncounter)
     {
-        if (m_auiEncounter[i] == IN_PROGRESS)
-            m_auiEncounter[i] = NOT_STARTED;
+        if (i == IN_PROGRESS)
+            i = NOT_STARTED;
     }
 
     OUT_LOAD_INST_DATA_COMPLETE;
@@ -448,10 +493,12 @@ bool instance_dire_maul::CheckConditionCriteriaMeet(Player const* pPlayer, uint3
         case INSTANCE_CONDITION_ID_HARD_MODE:               // One guard alive
         case INSTANCE_CONDITION_ID_HARD_MODE_2:             // Two guards alive
         case INSTANCE_CONDITION_ID_HARD_MODE_3:             // Three guards alive
-        case INSTANCE_CONDITION_ID_HARD_MODE_4:             // All guards alive
+        case INSTANCE_CONDITION_ID_HARD_MODE_4:             // Four guards alive
+        case INSTANCE_CONDITION_ID_HARD_MODE_5:             // Five guards alive
+        case INSTANCE_CONDITION_ID_HARD_MODE_6:             // Six guards alive
         {
             uint8 uiTributeRunAliveBosses = (GetData(TYPE_MOLDAR) != DONE ? 1 : 0) + (GetData(TYPE_FENGUS) != DONE ? 1 : 0) + (GetData(TYPE_SLIPKIK) != DONE ? 1 : 0)
-                                            + (GetData(TYPE_KROMCRUSH) != DONE ? 1 : 0);
+                                            + (GetData(TYPE_KROMCRUSH) != DONE ? 1 : 0) + (GetData(TYPE_CHORUSH) != DONE ? 1 : 0) + (GetData(TYPE_STOMPER_KREEG) != DONE ? 1 : 0);
 
             return uiInstanceConditionId == uiTributeRunAliveBosses;
         }
@@ -462,12 +509,14 @@ bool instance_dire_maul::CheckConditionCriteriaMeet(Player const* pPlayer, uint3
     return false;
 }
 
+GuidVector instance_dire_maul::GetRitualSymbolGuids()
+{
+    return m_lRitualSymbolGUIDs;
+}
+
 bool instance_dire_maul::CheckAllGeneratorsDestroyed()
 {
-    if (m_auiEncounter[TYPE_PYLON_1] != DONE || m_auiEncounter[TYPE_PYLON_2] != DONE || m_auiEncounter[TYPE_PYLON_3] != DONE || m_auiEncounter[TYPE_PYLON_4] != DONE || m_auiEncounter[TYPE_PYLON_5] != DONE)
-        return false;
-
-    return true;
+    return !(m_auiEncounter[TYPE_PYLON_1] != DONE || m_auiEncounter[TYPE_PYLON_2] != DONE || m_auiEncounter[TYPE_PYLON_3] != DONE || m_auiEncounter[TYPE_PYLON_4] != DONE || m_auiEncounter[TYPE_PYLON_5] != DONE);
 }
 
 void instance_dire_maul::ProcessForceFieldOpening()
@@ -477,7 +526,7 @@ void instance_dire_maul::ProcessForceFieldOpening()
 
     // Let the summoners attack Immol'Thar
     Creature* pImmolThar = GetSingleCreatureFromStorage(NPC_IMMOLTHAR);
-    if (!pImmolThar || pImmolThar->isDead())
+    if (!pImmolThar || pImmolThar->IsDead())
         return;
 
     bool bHasYelled = false;
@@ -491,7 +540,7 @@ void instance_dire_maul::ProcessForceFieldOpening()
             bHasYelled = true;
         }
 
-        if (!pSummoner || pSummoner->isDead())
+        if (!pSummoner || pSummoner->IsDead())
             continue;
 
         pSummoner->AI()->AttackStart(pImmolThar);
@@ -514,7 +563,7 @@ void instance_dire_maul::SortPylonGuards()
             for (GuidList::iterator itr = m_lGeneratorGuardGUIDs.begin(); itr != m_lGeneratorGuardGUIDs.end();)
             {
                 Creature* pGuard = instance->GetCreature(*itr);
-                if (!pGuard || pGuard->isDead())    // Remove invalid guids and dead guards
+                if (!pGuard || pGuard->IsDead())    // Remove invalid guids and dead guards
                 {
                     m_lGeneratorGuardGUIDs.erase(itr++);
                     continue;
@@ -552,19 +601,16 @@ void instance_dire_maul::PylonGuardJustDied(Creature* pCreature)
     }
 }
 
-void instance_dire_maul::Update(uint32 uiDiff)
+void instance_dire_maul::ProcessDreadsteedRitualStart()
 {
-    if (m_uiDreadsteedEventTimer)
+    if (GameObject* go = GetSingleGameObjectFromStorage(GO_WARLOCK_RITUAL_CIRCLE))
     {
-        if (m_uiDreadsteedEventTimer <= uiDiff)
-        {
-            // set encounter to special to allow the next event to proceed
-            SetData(TYPE_DREADSTEED, SPECIAL);
-            m_uiDreadsteedEventTimer = 0;
-        }
-        else
-            m_uiDreadsteedEventTimer -= uiDiff;
+        go->SetRespawnTime(900);
+        go->Refresh();
     }
+    for (auto portal : m_lDreadsteedPortalsGUIDs)
+        if (GameObject* go = instance->GetGameObject(portal))
+            DoRespawnGameObject(portal, 360);
 }
 
 InstanceData* GetInstanceData_instance_dire_maul(Map* pMap)
@@ -572,12 +618,73 @@ InstanceData* GetInstanceData_instance_dire_maul(Map* pMap)
     return new instance_dire_maul(pMap);
 }
 
+/*###############
+## go_fixed_trap
+################*/
+
+struct go_ai_fixed_trap : public GameObjectAI
+{
+    go_ai_fixed_trap(GameObject* go) : GameObjectAI(go) {}
+
+    void UpdateAI(const uint32 /*uiDiff*/) override
+    {
+        if (m_go->IsSpawned())
+        {
+            // Sniffs show that trap should only react to Guard Slip'kik
+            // He then enters evade mode and becomes an invalid target to hostile actions from players
+            // Faction is changed to 14 and restored by spell 22799 (King of the Gordok)
+            // Additionnaly, Guard Slip'kik should get UnitFlags 16 but purpose is unknown so we skip it for now
+            if (Creature* slipkik = GetClosestCreatureWithEntry(m_go, NPC_GUARD_SLIPKIK, 0.5f))
+            {
+                m_go->Use(slipkik);
+                DoScriptText(SAY_SLIPKIK_TRAP, slipkik);
+                slipkik->AI()->EnterEvadeMode();
+                slipkik->SetImmuneToPlayer(true);
+                slipkik->SetFactionTemporary(FACTION_HOSTILE, TEMPFACTION_RESTORE_RESPAWN);
+                m_go->SetLootState(GO_JUST_DEACTIVATED);    // Despawn the trap
+            }
+        }
+    }
+};
+
+GameObjectAI* GetAI_go_fixed_trap(GameObject* go)
+{
+    return new go_ai_fixed_trap(go);
+}
+
+/*####################################
+## Guard Slip'kik Trigger dummy effect
+####################################*/
+
+bool EffectDummyCreature_spell_guard_slip_kik(Unit* pCaster, uint32 uiSpellId, SpellEffectIndex /* uiEffIndex */, Creature* /* pCreatureTarget */, ObjectGuid /*originalCasterGuid*/)
+{
+    if (uiSpellId == SPELL_GUARD_SLIPKIK_TRIGGER)
+    {
+        instance_dire_maul* pInstance = (instance_dire_maul*)pCaster->GetInstanceData();
+        if (pInstance)
+        {
+            if (Creature* slipkik = pInstance->GetSingleCreatureFromStorage(NPC_GUARD_SLIPKIK))
+                slipkik->setFaction(FACTION_OGRE);
+            return true;
+        }
+    }
+    return false;
+}
+
 void AddSC_instance_dire_maul()
 {
-    Script* pNewScript;
-
-    pNewScript = new Script;
+    Script* pNewScript = new Script;
     pNewScript->Name = "instance_dire_maul";
     pNewScript->GetInstanceData = &GetInstanceData_instance_dire_maul;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "go_fixed_trap";
+    pNewScript->GetGameObjectAI = &GetAI_go_fixed_trap;
+    pNewScript->RegisterSelf();
+
+    pNewScript = new Script;
+    pNewScript->Name = "npc_mizzle_crafty";
+    pNewScript->pEffectDummyNPC = &EffectDummyCreature_spell_guard_slip_kik;
     pNewScript->RegisterSelf();
 }
